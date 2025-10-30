@@ -1,79 +1,177 @@
-# VisionSpeak - Hệ Thống Nhận Dạng Ký Tự Quang Học (OCR) và Phát Âm Thanh (TTS) Thích Ứng
+# VisionSpeak - OCR & TTS Application
 
-## Mô tả dự án
+**Ứng dụng nhận dạng chữ (OCR) và đọc văn bản (TTS) cho ảnh chất lượng thấp**
 
-VisionSpeak là một ứng dụng desktop được phát triển bằng Python, tích hợp công nghệ OCR (Optical Character Recognition) và TTS (Text-to-Speech) để nhận dạng văn bản từ hình ảnh và chuyển đổi thành giọng nói.
+## ✨ Tính năng chính
 
-## Tính năng chính
+- 🖼️ **Xử lý ảnh nâng cao**: Giảm nhiễu, tăng độ tương phản, tự động đảo ngược
+- 🔍 **OCR chính xác**: Tesseract OCR với cấu hình tối ưu
+- 🔊 **Text-to-Speech**: Đọc văn bản bằng giọng nói
+- 📊 **Giao diện trực quan**: Xem ảnh trước/sau xử lý
+- 🌐 **Hỗ trợ đa ngôn ngữ**: Tiếng Anh, Tiếng Việt, v.v.
 
-- **Xử lý ảnh nâng cao**: Giảm nhiễu, adaptive thresholding, phát hiện và xử lý ảnh đảo ngược màu
-- **OCR chính xác**: Sử dụng Tesseract với các cấu hình tối ưu
-- **Text-to-Speech**: Chuyển đổi văn bản thành giọng nói với khả năng điều chỉnh tốc độ
-- **Giao diện thân thiện**: GUI trực quan với Tkinter
+## 🚀 Cài đặt
 
-## Cài đặt
+### 1. Cài đặt Tesseract OCR
 
-1. Cài đặt Python 3.x
-2. Cài đặt Tesseract OCR:
+**macOS:**
 
-   - Windows: Tải từ https://github.com/UB-Mannheim/tesseract/wiki
-   - Linux: `sudo apt-get install tesseract-ocr`
-   - macOS: `brew install tesseract`
+```bash
+brew install tesseract
+```
 
-3. Cài đặt các thư viện Python:
+**Ubuntu/Debian:**
+
+```bash
+sudo apt-get install tesseract-ocr
+```
+
+### 2. Cài đặt thư viện Python
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## Sử dụng
+## 📖 Sử dụng
 
-### Chạy ứng dụng chính:
-
-```bash
-python main.py
-```
-
-### Chạy test suite:
+### Chạy ứng dụng GUI
 
 ```bash
-python test_vision_speak.py
+python gui.py
 ```
 
-### Chạy demo:
+### Test với ảnh mẫu
+
+**Bước 1: Tạo ảnh test**
 
 ```bash
-python demo.py
+python create_test_images.py
 ```
 
-### Các tính năng chính:
+**Bước 2: Chạy demo test**
 
-1. **Tải ảnh**: Chọn file ảnh từ máy tính
-2. **Chụp ảnh**: Sử dụng camera để chụp ảnh trực tiếp
-3. **Xử lý ảnh**: Tối ưu hóa ảnh cho OCR (giảm nhiễu, adaptive thresholding, phát hiện đảo ngược màu)
-4. **OCR**: Nhận dạng văn bản với nhiều cấu hình tối ưu
-5. **TTS**: Phát âm văn bản đã nhận dạng
-6. **Lưu file**: Xuất văn bản hoặc audio ra file
+```bash
+# Test 1 ảnh cụ thể
+python demo_test.py test_images/01_en_normal.png
 
-## Cấu trúc dự án
+# Hoặc chạy interactive
+python demo_test.py
+```
+
+### Sử dụng trong code
+
+```python
+from image_processor import ImageProcessor
+from ocr_engine import OCREngine
+from tts_engine import TTSEngine
+
+# Xử lý ảnh
+processor = ImageProcessor()
+processed = processor.process_image('image.png')
+
+# OCR
+ocr = OCREngine()
+text = ocr.recognize_text(processed)
+
+# TTS
+tts = TTSEngine()
+tts.speak(text)
+```
+
+## 📁 Cấu trúc project
 
 ```
 IPV-project/
-├── main.py                 # File chính của ứng dụng
-├── gui.py                  # Module giao diện người dùng
-├── image_processor.py      # Module xử lý ảnh với OpenCV
-├── ocr_engine.py          # Module OCR với Pytesseract
-├── tts_engine.py          # Module Text-to-Speech
-├── test_vision_speak.py   # File test các module
-├── demo.py               # File demo minh họa
-├── requirements.txt        # Danh sách thư viện cần thiết
-├── INSTALL.md             # Hướng dẫn cài đặt chi tiết
-└── README.md              # Tài liệu dự án
+├── gui.py                    # Ứng dụng GUI chính
+├── image_processor.py        # Xử lý ảnh
+├── ocr_engine.py            # OCR engine
+├── tts_engine.py            # Text-to-Speech
+├── demo.py                  # Demo command-line
+├── demo_test.py             # Demo test script
+├── create_test_images.py    # Tạo ảnh test
+├── test_images/             # Thư mục ảnh test (16 ảnh)
+├── requirements.txt         # Dependencies
+├── README.md               # File này
+└── INSTALL.md              # Hướng dẫn cài đặt chi tiết
 ```
 
-## Yêu cầu hệ thống
+## 🎯 Test Cases
 
-- Python 3.7+
-- Tesseract OCR Engine
-- Camera hoặc khả năng upload ảnh
-- Hệ điều hành: Windows, Linux, macOS
+Script `create_test_images.py` tạo 16 ảnh test:
+
+**Tiếng Anh (8 ảnh):**
+
+- Normal, Noisy, Blurry, Dark
+- Inverted, Skewed, Low contrast, Multiline
+
+**Tiếng Việt (8 ảnh):**
+
+- Normal, Noisy, Blurry, Dark
+- Inverted, Skewed, Low contrast, Multiline
+
+## ⌨️ Phím tắt GUI
+
+| Phím           | Chức năng   |
+| -------------- | ----------- |
+| `Ctrl+O`       | Mở ảnh      |
+| `Ctrl+P`       | Xử lý ảnh   |
+| `Ctrl+R`       | Chạy OCR    |
+| `Ctrl+Shift+P` | Xử lý & OCR |
+| `Ctrl+Space`   | Đọc văn bản |
+| `Ctrl+S`       | Lưu văn bản |
+
+## 🔧 Xử lý các loại ảnh khó
+
+VisionSpeak xử lý được:
+
+- ✅ Ảnh nhiễu, mờ
+- ✅ Ảnh tối, độ sáng thấp
+- ✅ Text trắng trên nền đen
+- ✅ Ảnh bị nghiêng
+- ✅ Độ tương phản thấp
+- ✅ Font chữ không đều
+
+## 📚 Tài liệu
+
+- **README.md** (file này) - Hướng dẫn nhanh
+- **INSTALL.md** - Hướng dẫn cài đặt chi tiết
+- **demo.py** - Demo command-line
+- **demo_test.py** - Test tất cả tính năng
+
+## ⚙️ Yêu cầu hệ thống
+
+- Python 3.8+
+- Tesseract OCR 5.0+
+- OpenCV, Pillow, NumPy
+- pytesseract, pyttsx3
+
+## 🐛 Khắc phục sự cố
+
+**Tesseract không tìm thấy:**
+
+```bash
+# Kiểm tra Tesseract
+tesseract --version
+
+# Thêm vào PATH hoặc cài đặt lại
+```
+
+**Không nhận dạng được text:**
+
+- Xử lý ảnh trước khi OCR
+- Bật "Apply Deskew" nếu ảnh bị nghiêng
+- Kiểm tra chất lượng ảnh
+
+**TTS không hoạt động:**
+
+```bash
+pip install --upgrade pyttsx3
+```
+
+## 👨‍💻 Tác giả
+
+VisionSpeak - Dự án IPV
+
+---
+
+**Bắt đầu ngay:** `python gui.py` 🚀

@@ -1,807 +1,743 @@
 """
-Module GUI cho VisionSpeak
-Giao diện người dùng được xây dựng bằng Tkinter
+VisionSpeak - Adaptive OCR and TTS Desktop Application
+Main GUI module using Tkinter
 """
 
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
-import cv2
-import numpy as np
 from PIL import Image, ImageTk
-import threading
 import os
-from datetime import datetime
+import threading
 
 from image_processor import ImageProcessor
 from ocr_engine import OCREngine
 from tts_engine import TTSEngine
 
 
-class VisionSpeakGUI:
+class VisionSpeakApp:
     """
-    Lớp giao diện chính của ứng dụng VisionSpeak
+    Main application class for VisionSpeak.
+    Provides a GUI for image loading, processing, OCR, and TTS.
     """
     
     def __init__(self, root):
         """
-        Khởi tạo giao diện
+        Initialize the VisionSpeak application.
         
         Args:
             root: Tkinter root window
         """
         self.root = root
-        self.root.title("VisionSpeak - Hệ Thống OCR và TTS Thích Ứng")
+        self.root.title("VisionSpeak - Adaptive OCR & TTS Application")
         self.root.geometry("1200x800")
-        self.root.minsize(1000, 700)
         
-        # Khởi tạo các engine
+        # Initialize processing engines
         self.image_processor = ImageProcessor()
         self.ocr_engine = OCREngine()
         self.tts_engine = TTSEngine()
         
-        # Biến trạng thái
-        self.current_image = None
+        # Application state
         self.current_image_path = None
-        self.processed_image = None
-        self.ocr_result = None
-        self.is_processing = False
+        self.current_text = ""
+        self.processing_in_progress = False
         
-        # Thiết lập giao diện
+        # Check if Tesseract is installed
+        if not self.ocr_engine.check_tesseract_installed():
+            messagebox.showwarning(
+                "Tesseract Not Found",
+                "Tesseract OCR is not installed or not found in PATH.\n"
+                "Please install Tesseract OCR to use this application.\n"
+                "See INSTALL.md for installation instructions."
+            )
+        
+        # Setup GUI
         self.setup_ui()
-        self.setup_menu()
-        self.setup_status_bar()
         
-        # Thiết lập sự kiện
-        self.setup_events()
-        
+        # Configure grid weights for responsive layout
+        self.root.grid_rowconfigure(1, weight=1)
+        self.root.grid_columnconfigure(0, weight=1)
+    
     def setup_ui(self):
-        """
-        Thiết lập giao diện người dùng
-        """
-        # Tạo notebook để tổ chức các tab
-        self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        """Setup the user interface."""
+        # Create menu bar
+        self.create_menu_bar()
         
-        # Tab chính - Xử lý ảnh và OCR
-        self.main_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.main_frame, text="OCR & TTS")
+        # Create toolbar
+        self.create_toolbar()
         
-        # Tab cài đặt
-        self.settings_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.settings_frame, text="Cài Đặt")
+        # Create main content area
+        self.create_main_content()
         
-        self.setup_main_tab()
-        self.setup_settings_tab()
-        
-    def setup_main_tab(self):
-        """
-        Thiết lập tab chính
-        """
-        # Frame chính với 3 cột
-        main_container = ttk.Frame(self.main_frame)
-        main_container.pack(fill=tk.BOTH, expand=True)
-        
-        # Cột trái - Điều khiển
-        control_frame = ttk.LabelFrame(main_container, text="Điều Khiển", padding=10)
-        control_frame.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
-        
-        # Nút tải ảnh
-        self.load_image_btn = ttk.Button(
-            control_frame, 
-            text="Tải Ảnh", 
-            command=self.load_image,
-            width=20
-        )
-        self.load_image_btn.pack(pady=5)
-        
-        # Nút chụp ảnh từ camera
-        self.capture_btn = ttk.Button(
-            control_frame, 
-            text="Chụp Ảnh", 
-            command=self.capture_from_camera,
-            width=20
-        )
-        self.capture_btn.pack(pady=5)
-        
-        # Separator
-        ttk.Separator(control_frame, orient='horizontal').pack(fill=tk.X, pady=10)
-        
-        # Nút xử lý ảnh
-        self.process_btn = ttk.Button(
-            control_frame, 
-            text="Xử Lý Ảnh", 
-            command=self.process_image,
-            width=20,
-            state=tk.DISABLED
-        )
-        self.process_btn.pack(pady=5)
-        
-        # Nút OCR
-        self.ocr_btn = ttk.Button(
-            control_frame, 
-            text="Nhận Dạng Văn Bản", 
-            command=self.perform_ocr,
-            width=20,
-            state=tk.DISABLED
-        )
-        self.ocr_btn.pack(pady=5)
-        
-        # Separator
-        ttk.Separator(control_frame, orient='horizontal').pack(fill=tk.X, pady=10)
-        
-        # Điều khiển TTS
-        tts_frame = ttk.LabelFrame(control_frame, text="Text-to-Speech", padding=5)
-        tts_frame.pack(fill=tk.X, pady=5)
-        
-        self.speak_btn = ttk.Button(
-            tts_frame, 
-            text="Phát Âm", 
-            command=self.speak_text,
-            width=15,
-            state=tk.DISABLED
-        )
-        self.speak_btn.pack(pady=2)
-        
-        self.stop_speak_btn = ttk.Button(
-            tts_frame, 
-            text="Dừng", 
-            command=self.stop_speaking,
-            width=15,
-            state=tk.DISABLED
-        )
-        self.stop_speak_btn.pack(pady=2)
-        
-        self.save_audio_btn = ttk.Button(
-            tts_frame, 
-            text="Lưu Audio", 
-            command=self.save_audio,
-            width=15,
-            state=tk.DISABLED
-        )
-        self.save_audio_btn.pack(pady=2)
-        
-        # Cột giữa - Hiển thị ảnh
-        image_frame = ttk.LabelFrame(main_container, text="Hình Ảnh", padding=10)
-        image_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 10))
-        
-        # Canvas để hiển thị ảnh
-        self.image_canvas = tk.Canvas(image_frame, bg='white', width=400, height=300)
-        self.image_canvas.pack(fill=tk.BOTH, expand=True)
-        
-        # Label hiển thị thông tin ảnh
-        self.image_info_label = ttk.Label(image_frame, text="Chưa có ảnh")
-        self.image_info_label.pack(pady=5)
-        
-        # Cột phải - Kết quả OCR
-        result_frame = ttk.LabelFrame(main_container, text="Kết Quả OCR", padding=10)
-        result_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
-        
-        # Text widget để hiển thị văn bản
-        self.result_text = scrolledtext.ScrolledText(
-            result_frame, 
-            wrap=tk.WORD, 
-            width=40, 
-            height=20,
-            font=('Arial', 10)
-        )
-        self.result_text.pack(fill=tk.BOTH, expand=True)
-        
-        # Frame cho thông tin OCR
-        info_frame = ttk.Frame(result_frame)
-        info_frame.pack(fill=tk.X, pady=(10, 0))
-        
-        self.ocr_info_label = ttk.Label(info_frame, text="Chưa có kết quả OCR")
-        self.ocr_info_label.pack()
-        
-    def setup_settings_tab(self):
-        """
-        Thiết lập tab cài đặt
-        """
-        # Frame chính
-        main_frame = ttk.Frame(self.settings_frame)
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
-        
-        # Cài đặt TTS
-        tts_settings_frame = ttk.LabelFrame(main_frame, text="Cài Đặt Text-to-Speech", padding=10)
-        tts_settings_frame.pack(fill=tk.X, pady=(0, 20))
-        
-        # Tốc độ nói
-        ttk.Label(tts_settings_frame, text="Tốc độ nói:").pack(anchor=tk.W)
-        self.rate_var = tk.IntVar(value=200)
-        self.rate_scale = ttk.Scale(
-            tts_settings_frame, 
-            from_=50, 
-            to=300, 
-            variable=self.rate_var,
-            orient=tk.HORIZONTAL,
-            command=self.update_rate
-        )
-        self.rate_scale.pack(fill=tk.X, pady=5)
-        self.rate_label = ttk.Label(tts_settings_frame, text="200")
-        self.rate_label.pack()
-        
-        # Âm lượng
-        ttk.Label(tts_settings_frame, text="Âm lượng:").pack(anchor=tk.W)
-        self.volume_var = tk.DoubleVar(value=0.8)
-        self.volume_scale = ttk.Scale(
-            tts_settings_frame, 
-            from_=0.0, 
-            to=1.0, 
-            variable=self.volume_var,
-            orient=tk.HORIZONTAL,
-            command=self.update_volume
-        )
-        self.volume_scale.pack(fill=tk.X, pady=5)
-        self.volume_label = ttk.Label(tts_settings_frame, text="0.8")
-        self.volume_label.pack()
-        
-        # Giọng nói
-        ttk.Label(tts_settings_frame, text="Giọng nói:").pack(anchor=tk.W)
-        self.voice_var = tk.StringVar()
-        self.voice_combo = ttk.Combobox(tts_settings_frame, textvariable=self.voice_var, state="readonly")
-        self.voice_combo.pack(fill=tk.X, pady=5)
-        self.voice_combo.bind('<<ComboboxSelected>>', self.update_voice)
-        
-        # Cài đặt OCR
-        ocr_settings_frame = ttk.LabelFrame(main_frame, text="Cài Đặt OCR", padding=10)
-        ocr_settings_frame.pack(fill=tk.X, pady=(0, 20))
-        
-        # Ngôn ngữ OCR
-        ttk.Label(ocr_settings_frame, text="Ngôn ngữ:").pack(anchor=tk.W)
-        self.language_var = tk.StringVar(value="vie+eng")
-        language_combo = ttk.Combobox(
-            ocr_settings_frame, 
-            textvariable=self.language_var,
-            values=["vie", "eng", "vie+eng"],
-            state="readonly"
-        )
-        language_combo.pack(fill=tk.X, pady=5)
-        
-        # Cài đặt xử lý ảnh
-        image_settings_frame = ttk.LabelFrame(main_frame, text="Cài Đặt Xử Lý Ảnh", padding=10)
-        image_settings_frame.pack(fill=tk.X)
-        
-        # Debug mode
-        self.debug_var = tk.BooleanVar()
-        debug_check = ttk.Checkbutton(
-            image_settings_frame, 
-            text="Chế độ debug (lưu các bước xử lý)",
-            variable=self.debug_var,
-            command=self.toggle_debug
-        )
-        debug_check.pack(anchor=tk.W)
-        
-        # Nút test
-        test_frame = ttk.Frame(main_frame)
-        test_frame.pack(fill=tk.X, pady=20)
-        
-        ttk.Button(test_frame, text="Test TTS", command=self.test_tts).pack(side=tk.LEFT, padx=(0, 10))
-        ttk.Button(test_frame, text="Reset Cài Đặt", command=self.reset_settings).pack(side=tk.LEFT)
-        
-        # Khởi tạo danh sách giọng nói
-        self.load_voices()
-        
-    def setup_menu(self):
-        """
-        Thiết lập menu bar
-        """
+        # Create status bar
+        self.create_status_bar()
+    
+    def create_menu_bar(self):
+        """Create the application menu bar."""
         menubar = tk.Menu(self.root)
         self.root.config(menu=menubar)
         
-        # Menu File
+        # File menu
         file_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="File", menu=file_menu)
-        file_menu.add_command(label="Mở Ảnh...", command=self.load_image)
-        file_menu.add_command(label="Chụp Ảnh...", command=self.capture_from_camera)
+        file_menu.add_command(label="Open Image...", command=self.open_image, accelerator="Ctrl+O")
+        file_menu.add_command(label="Save Text...", command=self.save_text, accelerator="Ctrl+S")
         file_menu.add_separator()
-        file_menu.add_command(label="Lưu Văn Bản...", command=self.save_text)
-        file_menu.add_command(label="Lưu Audio...", command=self.save_audio)
-        file_menu.add_separator()
-        file_menu.add_command(label="Thoát", command=self.root.quit)
+        file_menu.add_command(label="Exit", command=self.root.quit, accelerator="Ctrl+Q")
         
-        # Menu Help
+        # Process menu
+        process_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Process", menu=process_menu)
+        process_menu.add_command(label="Process Image", command=self.process_image, accelerator="Ctrl+P")
+        process_menu.add_command(label="Run OCR", command=self.run_ocr, accelerator="Ctrl+R")
+        process_menu.add_separator()
+        process_menu.add_command(label="Process & OCR", command=self.process_and_ocr, accelerator="Ctrl+Shift+P")
+        
+        # Speech menu
+        speech_menu = tk.Menu(menubar, tearoff=0)
+        menubar.add_cascade(label="Speech", menu=speech_menu)
+        speech_menu.add_command(label="Speak Text", command=self.speak_text, accelerator="Ctrl+Space")
+        speech_menu.add_command(label="Stop Speaking", command=self.stop_speech)
+        speech_menu.add_separator()
+        speech_menu.add_command(label="TTS Settings...", command=self.show_tts_settings)
+        
+        # Help menu
         help_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Help", menu=help_menu)
-        help_menu.add_command(label="Hướng Dẫn", command=self.show_help)
-        help_menu.add_command(label="Về VisionSpeak", command=self.show_about)
+        help_menu.add_command(label="About", command=self.show_about)
+        help_menu.add_command(label="Instructions", command=self.show_instructions)
         
-    def setup_status_bar(self):
-        """
-        Thiết lập thanh trạng thái
-        """
-        self.status_bar = ttk.Frame(self.root)
-        self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
-        
-        self.status_label = ttk.Label(self.status_bar, text="Sẵn sàng")
-        self.status_label.pack(side=tk.LEFT, padx=10)
-        
-        # Progress bar
-        self.progress = ttk.Progressbar(
-            self.status_bar, 
-            mode='indeterminate',
-            length=200
-        )
-        self.progress.pack(side=tk.RIGHT, padx=10)
-        
-    def setup_events(self):
-        """
-        Thiết lập các sự kiện
-        """
-        # Bind events
-        self.root.bind('<Control-o>', lambda e: self.load_image())
+        # Bind keyboard shortcuts
+        self.root.bind('<Control-o>', lambda e: self.open_image())
         self.root.bind('<Control-s>', lambda e: self.save_text())
-        self.root.bind('<F5>', lambda e: self.perform_ocr())
+        self.root.bind('<Control-p>', lambda e: self.process_image())
+        self.root.bind('<Control-r>', lambda e: self.run_ocr())
+        self.root.bind('<Control-P>', lambda e: self.process_and_ocr())
+        self.root.bind('<Control-space>', lambda e: self.speak_text())
+        self.root.bind('<Control-q>', lambda e: self.root.quit())
+    
+    def create_toolbar(self):
+        """Create the toolbar with main action buttons."""
+        toolbar = ttk.Frame(self.root, padding="5")
+        toolbar.grid(row=0, column=0, sticky=(tk.W, tk.E))
         
-    def load_image(self):
+        # Open Image button
+        self.btn_open = ttk.Button(
+            toolbar,
+            text="📁 Open Image",
+            command=self.open_image
+        )
+        self.btn_open.grid(row=0, column=0, padx=2)
+        
+        # Process Image button
+        self.btn_process = ttk.Button(
+            toolbar,
+            text="🔧 Process Image",
+            command=self.process_image
+        )
+        self.btn_process.grid(row=0, column=1, padx=2)
+        
+        # Run OCR button
+        self.btn_ocr = ttk.Button(
+            toolbar,
+            text="🔍 Run OCR",
+            command=self.run_ocr
+        )
+        self.btn_ocr.grid(row=0, column=2, padx=2)
+        
+        # Process & OCR button (combined)
+        self.btn_process_ocr = ttk.Button(
+            toolbar,
+            text="⚡ Process & OCR",
+            command=self.process_and_ocr
+        )
+        self.btn_process_ocr.grid(row=0, column=3, padx=2)
+        
+        # Separator
+        ttk.Separator(toolbar, orient=tk.VERTICAL).grid(row=0, column=4, padx=10, sticky=(tk.N, tk.S))
+        
+        # Speak button
+        self.btn_speak = ttk.Button(
+            toolbar,
+            text="🔊 Speak",
+            command=self.speak_text
+        )
+        self.btn_speak.grid(row=0, column=5, padx=2)
+        
+        # Stop button
+        self.btn_stop = ttk.Button(
+            toolbar,
+            text="⏹ Stop",
+            command=self.stop_speech
+        )
+        self.btn_stop.grid(row=0, column=6, padx=2)
+        
+        # Separator
+        ttk.Separator(toolbar, orient=tk.VERTICAL).grid(row=0, column=7, padx=10, sticky=(tk.N, tk.S))
+        
+        # Deskew checkbox
+        self.deskew_var = tk.BooleanVar(value=False)
+        self.chk_deskew = ttk.Checkbutton(
+            toolbar,
+            text="Apply Deskew",
+            variable=self.deskew_var
+        )
+        self.chk_deskew.grid(row=0, column=8, padx=2)
+        
+        # Initially disable processing buttons
+        self.update_button_states()
+    
+    def create_main_content(self):
+        """Create the main content area with image displays and text output."""
+        # Main container
+        main_frame = ttk.Frame(self.root, padding="10")
+        main_frame.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        main_frame.grid_rowconfigure(0, weight=1)
+        main_frame.grid_columnconfigure(0, weight=1)
+        main_frame.grid_columnconfigure(1, weight=1)
+        
+        # Left panel - Original Image
+        left_panel = ttk.LabelFrame(main_frame, text="Original Image", padding="5")
+        left_panel.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(0, 5))
+        left_panel.grid_rowconfigure(0, weight=1)
+        left_panel.grid_columnconfigure(0, weight=1)
+        
+        # Original image canvas with scrollbars
+        self.canvas_original = tk.Canvas(left_panel, bg='gray80', width=400, height=400)
+        scroll_x_orig = ttk.Scrollbar(left_panel, orient=tk.HORIZONTAL, command=self.canvas_original.xview)
+        scroll_y_orig = ttk.Scrollbar(left_panel, orient=tk.VERTICAL, command=self.canvas_original.yview)
+        self.canvas_original.configure(xscrollcommand=scroll_x_orig.set, yscrollcommand=scroll_y_orig.set)
+        
+        self.canvas_original.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        scroll_x_orig.grid(row=1, column=0, sticky=(tk.W, tk.E))
+        scroll_y_orig.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        
+        # Right panel - Processed Image
+        right_panel = ttk.LabelFrame(main_frame, text="Processed Image", padding="5")
+        right_panel.grid(row=0, column=1, sticky=(tk.W, tk.E, tk.N, tk.S), padx=(5, 0))
+        right_panel.grid_rowconfigure(0, weight=1)
+        right_panel.grid_columnconfigure(0, weight=1)
+        
+        # Processed image canvas with scrollbars
+        self.canvas_processed = tk.Canvas(right_panel, bg='gray80', width=400, height=400)
+        scroll_x_proc = ttk.Scrollbar(right_panel, orient=tk.HORIZONTAL, command=self.canvas_processed.xview)
+        scroll_y_proc = ttk.Scrollbar(right_panel, orient=tk.VERTICAL, command=self.canvas_processed.yview)
+        self.canvas_processed.configure(xscrollcommand=scroll_x_proc.set, yscrollcommand=scroll_y_proc.set)
+        
+        self.canvas_processed.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        scroll_x_proc.grid(row=1, column=0, sticky=(tk.W, tk.E))
+        scroll_y_proc.grid(row=0, column=1, sticky=(tk.N, tk.S))
+        
+        # Bottom panel - Recognized Text
+        text_panel = ttk.LabelFrame(self.root, text="Recognized Text", padding="5")
+        text_panel.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), padx=10, pady=10)
+        text_panel.grid_rowconfigure(0, weight=1)
+        text_panel.grid_columnconfigure(0, weight=1)
+        
+        # Text widget for OCR output
+        self.text_output = scrolledtext.ScrolledText(
+            text_panel,
+            wrap=tk.WORD,
+            width=80,
+            height=10,
+            font=('Arial', 11)
+        )
+        self.text_output.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Configure row weights for bottom panel
+        self.root.grid_rowconfigure(2, weight=0, minsize=200)
+    
+    def create_status_bar(self):
+        """Create the status bar at the bottom."""
+        status_frame = ttk.Frame(self.root)
+        status_frame.grid(row=3, column=0, sticky=(tk.W, tk.E))
+        
+        self.status_label = ttk.Label(
+            status_frame,
+            text="Ready",
+            relief=tk.SUNKEN,
+            anchor=tk.W
+        )
+        self.status_label.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2, pady=2)
+        
+        self.progress_bar = ttk.Progressbar(
+            status_frame,
+            mode='indeterminate',
+            length=100
+        )
+        self.progress_bar.pack(side=tk.RIGHT, padx=2, pady=2)
+    
+    def update_status(self, message):
         """
-        Tải ảnh từ file
+        Update the status bar message.
+        
+        Args:
+            message (str): Status message to display
         """
-        filetypes = [
-            ("Tất cả ảnh", "*.jpg *.jpeg *.png *.bmp *.tiff"),
-            ("JPEG", "*.jpg *.jpeg"),
-            ("PNG", "*.png"),
-            ("BMP", "*.bmp"),
-            ("TIFF", "*.tiff")
+        self.status_label.config(text=message)
+        self.root.update_idletasks()
+    
+    def update_button_states(self):
+        """Update button states based on application state."""
+        has_image = self.current_image_path is not None
+        has_text = len(self.current_text) > 0
+        
+        state_process = 'normal' if has_image and not self.processing_in_progress else 'disabled'
+        state_text = 'normal' if has_text and not self.tts_engine.is_busy() else 'disabled'
+        
+        self.btn_process.config(state=state_process)
+        self.btn_ocr.config(state=state_process)
+        self.btn_process_ocr.config(state=state_process)
+        self.btn_speak.config(state=state_text)
+    
+    def open_image(self):
+        """Open an image file dialog and load the selected image."""
+        file_types = [
+            ("Image files", "*.png *.jpg *.jpeg *.tiff *.tif *.bmp *.gif"),
+            ("PNG files", "*.png"),
+            ("JPEG files", "*.jpg *.jpeg"),
+            ("TIFF files", "*.tiff *.tif"),
+            ("All files", "*.*")
         ]
         
-        filename = filedialog.askopenfilename(
-            title="Chọn ảnh",
-            filetypes=filetypes
+        file_path = filedialog.askopenfilename(
+            title="Select an image",
+            filetypes=file_types
         )
         
-        if filename:
-            self.current_image_path = filename
-            self.display_image(filename)
-            self.update_status("Đã tải ảnh: " + os.path.basename(filename))
-            self.process_btn.config(state=tk.NORMAL)
-            
-    def capture_from_camera(self):
-        """
-        Chụp ảnh từ camera
-        """
-        try:
-            cap = cv2.VideoCapture(0)
-            if not cap.isOpened():
-                messagebox.showerror("Lỗi", "Không thể mở camera!")
-                return
-            
-            ret, frame = cap.read()
-            cap.release()
-            
-            if ret:
-                self.current_image = frame
-                self.current_image_path = None
-                self.display_image_from_array(frame)
-                self.update_status("Đã chụp ảnh từ camera")
-                self.process_btn.config(state=tk.NORMAL)
-            else:
-                messagebox.showerror("Lỗi", "Không thể chụp ảnh!")
+        if file_path:
+            try:
+                self.current_image_path = file_path
+                self.display_original_image(file_path)
+                self.update_status(f"Loaded: {os.path.basename(file_path)}")
+                self.update_button_states()
                 
-        except Exception as e:
-            messagebox.showerror("Lỗi", f"Lỗi khi chụp ảnh: {e}")
-            
-    def display_image(self, image_path):
+                # Clear previous processed image and text
+                self.canvas_processed.delete("all")
+                self.text_output.delete(1.0, tk.END)
+                self.current_text = ""
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to load image:\n{str(e)}")
+    
+    def display_original_image(self, image_path):
         """
-        Hiển thị ảnh từ file
-        """
-        try:
-            # Đọc ảnh
-            image = cv2.imread(image_path)
-            if image is None:
-                messagebox.showerror("Lỗi", "Không thể đọc ảnh!")
-                return
-            
-            self.current_image = image
-            self.display_image_from_array(image)
-            
-            # Cập nhật thông tin ảnh
-            height, width = image.shape[:2]
-            file_size = os.path.getsize(image_path) / 1024  # KB
-            info_text = f"Kích thước: {width}x{height} | Dung lượng: {file_size:.1f} KB"
-            self.image_info_label.config(text=info_text)
-            
-        except Exception as e:
-            messagebox.showerror("Lỗi", f"Lỗi khi hiển thị ảnh: {e}")
-            
-    def display_image_from_array(self, image_array):
-        """
-        Hiển thị ảnh từ numpy array
+        Display the original image on the canvas.
+        
+        Args:
+            image_path (str): Path to the image file
         """
         try:
-            # Chuyển đổi BGR sang RGB
-            rgb_image = cv2.cvtColor(image_array, cv2.COLOR_BGR2RGB)
+            # Load and display image
+            image = Image.open(image_path)
             
-            # Thay đổi kích thước để vừa với canvas
-            canvas_width = self.image_canvas.winfo_width()
-            canvas_height = self.image_canvas.winfo_height()
+            # Resize if too large (maintain aspect ratio)
+            max_size = (800, 800)
+            image.thumbnail(max_size, Image.Resampling.LANCZOS)
             
-            if canvas_width <= 1 or canvas_height <= 1:
-                canvas_width = 400
-                canvas_height = 300
+            # Convert to PhotoImage
+            photo = ImageTk.PhotoImage(image)
             
-            # Tính tỷ lệ scale
-            h, w = rgb_image.shape[:2]
-            scale = min(canvas_width/w, canvas_height/h, 1.0)
+            # Update canvas
+            self.canvas_original.delete("all")
+            self.canvas_original.create_image(0, 0, anchor=tk.NW, image=photo)
+            self.canvas_original.image = photo  # Keep a reference
             
-            new_w = int(w * scale)
-            new_h = int(h * scale)
-            
-            # Resize ảnh
-            resized_image = cv2.resize(rgb_image, (new_w, new_h))
-            
-            # Chuyển sang PIL Image
-            pil_image = Image.fromarray(resized_image)
-            
-            # Chuyển sang PhotoImage
-            self.photo = ImageTk.PhotoImage(pil_image)
-            
-            # Hiển thị trên canvas
-            self.image_canvas.delete("all")
-            self.image_canvas.create_image(
-                canvas_width//2, 
-                canvas_height//2, 
-                image=self.photo
-            )
-            
+            # Update scroll region
+            self.canvas_original.config(scrollregion=self.canvas_original.bbox("all"))
         except Exception as e:
-            print(f"Lỗi khi hiển thị ảnh: {e}")
+            raise RuntimeError(f"Failed to display image: {str(e)}")
+    
+    def display_processed_image(self, pil_image):
+        """
+        Display the processed image on the canvas.
+        
+        Args:
+            pil_image: PIL Image object
+        """
+        try:
+            # Resize if too large (maintain aspect ratio)
+            image = pil_image.copy()
+            max_size = (800, 800)
+            image.thumbnail(max_size, Image.Resampling.LANCZOS)
             
+            # Convert to PhotoImage
+            photo = ImageTk.PhotoImage(image)
+            
+            # Update canvas
+            self.canvas_processed.delete("all")
+            self.canvas_processed.create_image(0, 0, anchor=tk.NW, image=photo)
+            self.canvas_processed.image = photo  # Keep a reference
+            
+            # Update scroll region
+            self.canvas_processed.config(scrollregion=self.canvas_processed.bbox("all"))
+        except Exception as e:
+            raise RuntimeError(f"Failed to display processed image: {str(e)}")
+    
     def process_image(self):
-        """
-        Xử lý ảnh
-        """
-        if self.current_image is None:
-            messagebox.showwarning("Cảnh báo", "Vui lòng tải ảnh trước!")
+        """Process the current image using the image processor."""
+        if not self.current_image_path:
+            messagebox.showwarning("No Image", "Please open an image first.")
             return
         
-        self.start_processing("Đang xử lý ảnh...")
-        
-        def process_thread():
+        def process_task():
             try:
-                if self.current_image_path:
-                    # Xử lý từ file
-                    self.processed_image = self.image_processor.process_image(
-                        self.current_image_path
-                    )
-                else:
-                    # Xử lý từ array
-                    self.processed_image = self.image_processor.process_from_array(
-                        self.current_image
-                    )
+                self.processing_in_progress = True
+                self.update_button_states()
+                self.progress_bar.start()
+                self.update_status("Processing image...")
                 
-                if self.processed_image is not None:
-                    self.root.after(0, self.on_image_processed)
-                else:
-                    self.root.after(0, lambda: self.on_processing_error("Lỗi khi xử lý ảnh!"))
-                    
+                # Process image
+                apply_deskew = self.deskew_var.get()
+                processed = self.image_processor.process_image(
+                    self.current_image_path,
+                    apply_deskew=apply_deskew
+                )
+                
+                # Display processed image
+                pil_image = self.image_processor.get_processed_image_pil()
+                self.display_processed_image(pil_image)
+                
+                self.update_status("Image processing complete")
+                messagebox.showinfo("Success", "Image processing completed successfully!")
             except Exception as e:
-                self.root.after(0, lambda: self.on_processing_error(f"Lỗi: {e}"))
+                messagebox.showerror("Error", f"Image processing failed:\n{str(e)}")
+                self.update_status("Image processing failed")
+            finally:
+                self.processing_in_progress = False
+                self.progress_bar.stop()
+                self.update_button_states()
         
-        threading.Thread(target=process_thread, daemon=True).start()
-        
-    def on_image_processed(self):
-        """
-        Callback khi xử lý ảnh hoàn thành
-        """
-        self.stop_processing()
-        self.update_status("Đã xử lý ảnh thành công")
-        self.ocr_btn.config(state=tk.NORMAL)
-        
-        # Hiển thị ảnh đã xử lý
-        self.display_image_from_array(self.processed_image)
-        
-    def perform_ocr(self):
-        """
-        Thực hiện OCR
-        """
-        if self.processed_image is None:
-            messagebox.showwarning("Cảnh báo", "Vui lòng xử lý ảnh trước!")
+        # Run in separate thread to keep UI responsive
+        thread = threading.Thread(target=process_task, daemon=True)
+        thread.start()
+    
+    def run_ocr(self):
+        """Run OCR on the processed image (or original if not processed)."""
+        if not self.current_image_path:
+            messagebox.showwarning("No Image", "Please open an image first.")
             return
         
-        self.start_processing("Đang nhận dạng văn bản...")
-        
-        def ocr_thread():
-            try:
-                language = self.language_var.get()
-                
-                if self.current_image_path:
-                    # OCR từ file
-                    self.ocr_result = self.ocr_engine.extract_text_from_image(
-                        self.current_image_path, language=language
-                    )
-                else:
-                    # OCR từ array
-                    self.ocr_result = self.ocr_engine.extract_text_from_array(
-                        self.processed_image, language=language
-                    )
-                
-                self.root.after(0, self.on_ocr_completed)
-                    
-            except Exception as e:
-                self.root.after(0, lambda: self.on_processing_error(f"Lỗi OCR: {e}"))
-        
-        threading.Thread(target=ocr_thread, daemon=True).start()
-        
-    def on_ocr_completed(self):
-        """
-        Callback khi OCR hoàn thành
-        """
-        self.stop_processing()
-        
-        if self.ocr_result['success']:
-            text = self.ocr_result['text']
-            self.result_text.delete(1.0, tk.END)
-            self.result_text.insert(1.0, text)
-            
-            # Cập nhật thông tin OCR
-            config_used = self.ocr_result.get('config_used', 'N/A')
-            info_text = f"Cấu hình: {config_used} | Độ dài: {len(text)} ký tự"
-            self.ocr_info_label.config(text=info_text)
-            
-            # Kích hoạt các nút TTS
-            if text.strip():
-                self.speak_btn.config(state=tk.NORMAL)
-                self.save_audio_btn.config(state=tk.NORMAL)
-            
-            self.update_status("OCR hoàn thành thành công")
-        else:
-            error_msg = self.ocr_result.get('error', 'Lỗi không xác định')
-            self.on_processing_error(f"Lỗi OCR: {error_msg}")
-            
-    def speak_text(self):
-        """
-        Phát âm văn bản
-        """
-        text = self.result_text.get(1.0, tk.END).strip()
-        if not text:
-            messagebox.showwarning("Cảnh báo", "Không có văn bản để phát âm!")
-            return
-        
-        try:
-            success = self.tts_engine.speak_processed_text(text)
-            if success:
-                self.speak_btn.config(state=tk.DISABLED)
-                self.stop_speak_btn.config(state=tk.NORMAL)
-                self.update_status("Đang phát âm...")
+        # Check if image has been processed
+        if self.image_processor.processed_image is None:
+            response = messagebox.askyesno(
+                "Image Not Processed",
+                "The image has not been processed yet.\n"
+                "Do you want to process it first?"
+            )
+            if response:
+                self.process_and_ocr()
+                return
             else:
-                messagebox.showerror("Lỗi", "Không thể phát âm!")
+                # Use original image
+                image_to_ocr = self.current_image_path
+        else:
+            # Use processed image
+            image_to_ocr = self.image_processor.processed_image
+        
+        def ocr_task():
+            try:
+                self.processing_in_progress = True
+                self.update_button_states()
+                self.progress_bar.start()
+                self.update_status("Running OCR...")
                 
-        except Exception as e:
-            messagebox.showerror("Lỗi", f"Lỗi khi phát âm: {e}")
-            
-    def stop_speaking(self):
-        """
-        Dừng phát âm
-        """
-        try:
-            self.tts_engine.stop()
-            self.speak_btn.config(state=tk.NORMAL)
-            self.stop_speak_btn.config(state=tk.DISABLED)
-            self.update_status("Đã dừng phát âm")
-        except Exception as e:
-            messagebox.showerror("Lỗi", f"Lỗi khi dừng phát âm: {e}")
-            
-    def save_text(self):
-        """
-        Lưu văn bản ra file
-        """
-        text = self.result_text.get(1.0, tk.END).strip()
-        if not text:
-            messagebox.showwarning("Cảnh báo", "Không có văn bản để lưu!")
+                # Run OCR
+                text = self.ocr_engine.recognize_text(image_to_ocr, psm=6)
+                
+                # Display recognized text
+                self.text_output.delete(1.0, tk.END)
+                self.text_output.insert(1.0, text)
+                self.current_text = text
+                
+                self.update_status(f"OCR complete - {len(text)} characters recognized")
+                
+                if not text.strip():
+                    messagebox.showwarning(
+                        "No Text Found",
+                        "No text was recognized in the image.\n"
+                        "Try processing the image first or check image quality."
+                    )
+            except Exception as e:
+                messagebox.showerror("Error", f"OCR failed:\n{str(e)}")
+                self.update_status("OCR failed")
+            finally:
+                self.processing_in_progress = False
+                self.progress_bar.stop()
+                self.update_button_states()
+        
+        # Run in separate thread
+        thread = threading.Thread(target=ocr_task, daemon=True)
+        thread.start()
+    
+    def process_and_ocr(self):
+        """Process the image and run OCR in one step."""
+        if not self.current_image_path:
+            messagebox.showwarning("No Image", "Please open an image first.")
             return
         
-        filename = filedialog.asksaveasfilename(
-            title="Lưu văn bản",
+        def combined_task():
+            try:
+                self.processing_in_progress = True
+                self.update_button_states()
+                self.progress_bar.start()
+                
+                # Step 1: Process image
+                self.update_status("Processing image...")
+                apply_deskew = self.deskew_var.get()
+                processed = self.image_processor.process_image(
+                    self.current_image_path,
+                    apply_deskew=apply_deskew
+                )
+                
+                # Display processed image
+                pil_image = self.image_processor.get_processed_image_pil()
+                self.display_processed_image(pil_image)
+                
+                # Step 2: Run OCR
+                self.update_status("Running OCR...")
+                text = self.ocr_engine.recognize_text(processed, psm=6)
+                
+                # Display recognized text
+                self.text_output.delete(1.0, tk.END)
+                self.text_output.insert(1.0, text)
+                self.current_text = text
+                
+                self.update_status(f"Complete - {len(text)} characters recognized")
+                
+                if not text.strip():
+                    messagebox.showwarning(
+                        "No Text Found",
+                        "No text was recognized in the image.\n"
+                        "Try adjusting processing settings or check image quality."
+                    )
+                else:
+                    messagebox.showinfo("Success", f"Processing and OCR completed!\nRecognized {len(text)} characters.")
+            except Exception as e:
+                messagebox.showerror("Error", f"Process failed:\n{str(e)}")
+                self.update_status("Process failed")
+            finally:
+                self.processing_in_progress = False
+                self.progress_bar.stop()
+                self.update_button_states()
+        
+        # Run in separate thread
+        thread = threading.Thread(target=combined_task, daemon=True)
+        thread.start()
+    
+    def speak_text(self):
+        """Speak the recognized text using TTS."""
+        text = self.text_output.get(1.0, tk.END).strip()
+        
+        if not text:
+            messagebox.showwarning("No Text", "No text available to speak.")
+            return
+        
+        try:
+            self.update_status("Speaking...")
+            self.tts_engine.speak_async(text)
+            
+            # Monitor when speech is done
+            def check_speech_done():
+                if not self.tts_engine.is_busy():
+                    self.update_status("Ready")
+                    self.update_button_states()
+                else:
+                    self.root.after(100, check_speech_done)
+            
+            self.root.after(100, check_speech_done)
+            self.update_button_states()
+        except Exception as e:
+            messagebox.showerror("Error", f"TTS failed:\n{str(e)}")
+            self.update_status("TTS failed")
+    
+    def stop_speech(self):
+        """Stop the current speech."""
+        self.tts_engine.stop()
+        self.update_status("Speech stopped")
+        self.update_button_states()
+    
+    def save_text(self):
+        """Save the recognized text to a file."""
+        text = self.text_output.get(1.0, tk.END).strip()
+        
+        if not text:
+            messagebox.showwarning("No Text", "No text available to save.")
+            return
+        
+        file_path = filedialog.asksaveasfilename(
+            title="Save text",
             defaultextension=".txt",
             filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
         )
         
-        if filename:
+        if file_path:
             try:
-                with open(filename, 'w', encoding='utf-8') as f:
+                with open(file_path, 'w', encoding='utf-8') as f:
                     f.write(text)
-                messagebox.showinfo("Thành công", f"Đã lưu văn bản vào {filename}")
+                messagebox.showinfo("Success", f"Text saved to:\n{file_path}")
+                self.update_status(f"Saved: {os.path.basename(file_path)}")
             except Exception as e:
-                messagebox.showerror("Lỗi", f"Lỗi khi lưu file: {e}")
-                
-    def save_audio(self):
-        """
-        Lưu audio ra file
-        """
-        text = self.result_text.get(1.0, tk.END).strip()
-        if not text:
-            messagebox.showwarning("Cảnh báo", "Không có văn bản để lưu audio!")
-            return
+                messagebox.showerror("Error", f"Failed to save text:\n{str(e)}")
+    
+    def show_tts_settings(self):
+        """Show TTS settings dialog."""
+        settings_window = tk.Toplevel(self.root)
+        settings_window.title("TTS Settings")
+        settings_window.geometry("400x300")
+        settings_window.transient(self.root)
+        settings_window.grab_set()
         
-        filename = filedialog.asksaveasfilename(
-            title="Lưu audio",
-            defaultextension=".wav",
-            filetypes=[("WAV files", "*.wav"), ("All files", "*.*")]
+        # Rate setting
+        ttk.Label(settings_window, text="Speaking Rate:").grid(row=0, column=0, padx=10, pady=10, sticky=tk.W)
+        rate_var = tk.IntVar(value=self.tts_engine.rate)
+        rate_scale = ttk.Scale(
+            settings_window,
+            from_=50,
+            to=300,
+            variable=rate_var,
+            orient=tk.HORIZONTAL,
+            length=200
         )
+        rate_scale.grid(row=0, column=1, padx=10, pady=10)
+        rate_label = ttk.Label(settings_window, text=f"{rate_var.get()} wpm")
+        rate_label.grid(row=0, column=2, padx=10, pady=10)
         
-        if filename:
-            try:
-                success = self.tts_engine.save_to_file(text, filename)
-                if success:
-                    messagebox.showinfo("Thành công", f"Đã lưu audio vào {filename}")
-                else:
-                    messagebox.showerror("Lỗi", "Không thể lưu file audio!")
-            except Exception as e:
-                messagebox.showerror("Lỗi", f"Lỗi khi lưu audio: {e}")
-                
-    def load_voices(self):
-        """
-        Tải danh sách giọng nói
-        """
-        try:
-            voices = self.tts_engine.get_available_voices()
-            voice_names = [f"{voice['name']} ({voice['id']})" for voice in voices]
-            self.voice_combo['values'] = voice_names
+        def update_rate_label(*args):
+            rate_label.config(text=f"{rate_var.get()} wpm")
+        rate_var.trace('w', update_rate_label)
+        
+        # Volume setting
+        ttk.Label(settings_window, text="Volume:").grid(row=1, column=0, padx=10, pady=10, sticky=tk.W)
+        volume_var = tk.DoubleVar(value=self.tts_engine.volume)
+        volume_scale = ttk.Scale(
+            settings_window,
+            from_=0.0,
+            to=1.0,
+            variable=volume_var,
+            orient=tk.HORIZONTAL,
+            length=200
+        )
+        volume_scale.grid(row=1, column=1, padx=10, pady=10)
+        volume_label = ttk.Label(settings_window, text=f"{int(volume_var.get()*100)}%")
+        volume_label.grid(row=1, column=2, padx=10, pady=10)
+        
+        def update_volume_label(*args):
+            volume_label.config(text=f"{int(volume_var.get()*100)}%")
+        volume_var.trace('w', update_volume_label)
+        
+        # Voice selection
+        ttk.Label(settings_window, text="Voice:").grid(row=2, column=0, padx=10, pady=10, sticky=tk.W)
+        voices = self.tts_engine.get_available_voices()
+        voice_names = [f"{i}: {v.name}" for i, v in enumerate(voices)]
+        voice_var = tk.StringVar(value=voice_names[0] if voice_names else "")
+        voice_combo = ttk.Combobox(
+            settings_window,
+            textvariable=voice_var,
+            values=voice_names,
+            state='readonly',
+            width=30
+        )
+        voice_combo.grid(row=2, column=1, columnspan=2, padx=10, pady=10)
+        
+        # Buttons
+        button_frame = ttk.Frame(settings_window)
+        button_frame.grid(row=3, column=0, columnspan=3, pady=20)
+        
+        def apply_settings():
+            self.tts_engine.set_rate(rate_var.get())
+            self.tts_engine.set_volume(volume_var.get())
             
-            if voice_names:
-                self.voice_combo.current(0)
-                
-        except Exception as e:
-            print(f"Lỗi khi tải giọng nói: {e}")
+            # Set voice
+            if voice_combo.current() >= 0:
+                voice_id = voices[voice_combo.current()].id
+                self.tts_engine.set_voice(voice_id=voice_id)
             
-    def update_rate(self, value):
-        """
-        Cập nhật tốc độ nói
-        """
-        rate = int(float(value))
-        self.rate_label.config(text=str(rate))
-        self.tts_engine.set_rate(rate)
+            messagebox.showinfo("Success", "TTS settings applied!")
+            settings_window.destroy()
         
-    def update_volume(self, value):
-        """
-        Cập nhật âm lượng
-        """
-        volume = float(value)
-        self.volume_label.config(text=f"{volume:.1f}")
-        self.tts_engine.set_volume(volume)
-        
-    def update_voice(self, event):
-        """
-        Cập nhật giọng nói
-        """
-        selection = self.voice_combo.get()
-        if selection:
-            # Lấy voice ID từ chuỗi
-            voice_id = selection.split('(')[-1].rstrip(')')
-            self.tts_engine.set_voice(voice_id)
+        def test_settings():
+            # Temporarily apply settings
+            original_rate = self.tts_engine.rate
+            original_volume = self.tts_engine.volume
+            original_voice = self.tts_engine.engine.getProperty('voice')
             
-    def toggle_debug(self):
-        """
-        Bật/tắt chế độ debug
-        """
-        self.image_processor.set_debug_mode(self.debug_var.get())
-        
-    def test_tts(self):
-        """
-        Test TTS
-        """
-        test_text = "Đây là test hệ thống Text-to-Speech của VisionSpeak."
-        try:
-            self.tts_engine.speak_processed_text(test_text, blocking=True)
-        except Exception as e:
-            messagebox.showerror("Lỗi", f"Lỗi khi test TTS: {e}")
+            self.tts_engine.set_rate(rate_var.get())
+            self.tts_engine.set_volume(volume_var.get())
+            if voice_combo.current() >= 0:
+                voice_id = voices[voice_combo.current()].id
+                self.tts_engine.set_voice(voice_id=voice_id)
             
-    def reset_settings(self):
-        """
-        Reset cài đặt về mặc định
-        """
-        self.rate_var.set(200)
-        self.volume_var.set(0.8)
-        self.language_var.set("vie+eng")
-        self.debug_var.set(False)
+            # Speak test phrase
+            self.tts_engine.speak("This is a test of the text to speech settings.", blocking=False)
         
-        self.update_rate(200)
-        self.update_volume(0.8)
-        self.toggle_debug()
-        
-        messagebox.showinfo("Thông báo", "Đã reset cài đặt về mặc định!")
-        
-    def start_processing(self, message):
-        """
-        Bắt đầu hiển thị trạng thái xử lý
-        """
-        self.is_processing = True
-        self.progress.start()
-        self.update_status(message)
-        
-        # Disable các nút
-        self.process_btn.config(state=tk.DISABLED)
-        self.ocr_btn.config(state=tk.DISABLED)
-        
-    def stop_processing(self):
-        """
-        Dừng hiển thị trạng thái xử lý
-        """
-        self.is_processing = False
-        self.progress.stop()
-        
-        # Enable các nút
-        if self.current_image is not None:
-            self.process_btn.config(state=tk.NORMAL)
-        if self.processed_image is not None:
-            self.ocr_btn.config(state=tk.NORMAL)
-            
-    def on_processing_error(self, error_message):
-        """
-        Xử lý lỗi trong quá trình xử lý
-        """
-        self.stop_processing()
-        self.update_status(f"Lỗi: {error_message}")
-        messagebox.showerror("Lỗi", error_message)
-        
-    def update_status(self, message):
-        """
-        Cập nhật thanh trạng thái
-        """
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        self.status_label.config(text=f"[{timestamp}] {message}")
-        
-    def show_help(self):
-        """
-        Hiển thị hướng dẫn
-        """
-        help_text = """
-VisionSpeak - Hướng Dẫn Sử Dụng
-
-1. Tải ảnh hoặc chụp ảnh từ camera
-2. Nhấn "Xử Lý Ảnh" để tối ưu hóa ảnh cho OCR
-3. Nhấn "Nhận Dạng Văn Bản" để thực hiện OCR
-4. Sử dụng các nút TTS để phát âm văn bản
-5. Có thể lưu văn bản hoặc audio ra file
-
-Phím tắt:
-- Ctrl+O: Mở ảnh
-- Ctrl+S: Lưu văn bản
-- F5: Nhận dạng văn bản
-
-Cài đặt:
-- Điều chỉnh tốc độ và âm lượng TTS trong tab Cài Đặt
-- Chọn ngôn ngữ OCR phù hợp
-- Bật debug mode để lưu các bước xử lý ảnh
-        """
-        messagebox.showinfo("Hướng Dẫn", help_text)
-        
+        ttk.Button(button_frame, text="Test", command=test_settings).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Apply", command=apply_settings).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=settings_window.destroy).pack(side=tk.LEFT, padx=5)
+    
     def show_about(self):
-        """
-        Hiển thị thông tin về ứng dụng
-        """
-        about_text = """
-VisionSpeak v1.0
+        """Show about dialog."""
+        about_text = """VisionSpeak
+Adaptive OCR and TTS Desktop Application
 
-Hệ Thống Nhận Dạng Ký Tự Quang Học (OCR) và 
-Phát Âm Thanh (TTS) Thích Ứng
+Version: 1.0
 
-Phát triển bởi: [Tên sinh viên]
-Môn học: Xử Lý Ảnh và Thị Giác Máy Tính
+An advanced application for optical character recognition
+with intelligent image pre-processing and text-to-speech
+capabilities.
 
-Công nghệ sử dụng:
-- Python 3.x
-- OpenCV (xử lý ảnh)
-- Tesseract OCR
-- pyttsx3 (TTS)
-- Tkinter (GUI)
-        """
-        messagebox.showinfo("Về VisionSpeak", about_text)
+Features:
+• Advanced image pre-processing
+• Adaptive thresholding for uneven lighting
+• Automatic text inversion detection
+• Noise reduction and enhancement
+• Text-to-Speech output
+• Support for multiple image formats
+
+Developed for real-world OCR scenarios with
+challenging image conditions.
+"""
+        messagebox.showinfo("About VisionSpeak", about_text)
+    
+    def show_instructions(self):
+        """Show instructions dialog."""
+        instructions = """How to Use VisionSpeak:
+
+1. Open an Image
+   Click 'Open Image' or press Ctrl+O to load an image file.
+
+2. Process the Image (Optional but Recommended)
+   Click 'Process Image' to apply advanced pre-processing:
+   • Noise reduction
+   • Adaptive thresholding
+   • Automatic text inversion detection
+   • Optional deskewing
+
+3. Run OCR
+   Click 'Run OCR' to extract text from the image.
+   Or use 'Process & OCR' to do both steps at once.
+
+4. Listen to Text
+   Click 'Speak' to hear the recognized text.
+   Use 'Stop' to interrupt speech.
+
+5. Save Results
+   Save recognized text using File > Save Text.
+
+Tips:
+• Enable 'Apply Deskew' for rotated images
+• Process images before OCR for best results
+• Adjust TTS settings in Speech > TTS Settings
+• Use keyboard shortcuts for faster workflow
+"""
+        messagebox.showinfo("Instructions", instructions)
 
 
 def main():
-    """
-    Hàm main để chạy ứng dụng
-    """
+    """Main entry point for the application."""
     root = tk.Tk()
-    app = VisionSpeakGUI(root)
-    
-    try:
-        root.mainloop()
-    finally:
-        # Dọn dẹp tài nguyên
-        app.tts_engine.cleanup()
+    app = VisionSpeakApp(root)
+    root.mainloop()
 
 
 if __name__ == "__main__":
     main()
+

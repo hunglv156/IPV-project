@@ -1,5 +1,17 @@
+# VisionSpeak - Requirements
+# Adaptive OCR and TTS Desktop Application
+
+# Image Processing
 opencv-python==4.8.1.78
+Pillow==10.1.0
+numpy==1.26.2
+
+# OCR Engine
 pytesseract==0.3.10
-Pillow==10.0.1
+
+# Text-to-Speech
 pyttsx3==2.90
-numpy==1.24.3
+
+# Note: Tesseract OCR Engine must be installed separately
+# See INSTALL.md for installation instructions
+

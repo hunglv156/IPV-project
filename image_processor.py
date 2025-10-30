@@ -1,289 +1,294 @@
 """
-Module xử lý ảnh nâng cao cho VisionSpeak
-Tích hợp các thuật toán OpenCV để tiền xử lý ảnh trước khi OCR
+Image Processor Module for VisionSpeak
+Handles advanced image pre-processing including noise reduction, 
+adaptive thresholding, and automatic inversion detection.
 """
 
 import cv2
 import numpy as np
 from PIL import Image
-import os
 
 
 class ImageProcessor:
     """
-    Lớp xử lý ảnh với các thuật toán nâng cao để tối ưu hóa OCR
+    Advanced image processor for OCR pre-processing.
+    Handles various image quality issues including noise, blur, 
+    uneven lighting, and inverted text.
     """
     
     def __init__(self):
-        self.debug_mode = False
-        
-    def set_debug_mode(self, enabled):
-        """Bật/tắt chế độ debug để lưu các bước xử lý"""
-        self.debug_mode = enabled
+        """Initialize the image processor."""
+        self.original_image = None
+        self.processed_image = None
+        self.grayscale_image = None
         
     def load_image(self, image_path):
         """
-        Tải ảnh từ đường dẫn file
+        Load an image from file path.
         
         Args:
-            image_path (str): Đường dẫn đến file ảnh
+            image_path (str): Path to the image file
             
         Returns:
-            numpy.ndarray: Ảnh đã được tải
+            numpy.ndarray: Loaded image in BGR format
         """
-        try:
-            # Đọc ảnh bằng OpenCV
-            image = cv2.imread(image_path)
-            if image is None:
-                raise ValueError(f"Không thể tải ảnh từ {image_path}")
-            return image
-        except Exception as e:
-            print(f"Lỗi khi tải ảnh: {e}")
-            return None
+        self.original_image = cv2.imread(image_path)
+        if self.original_image is None:
+            raise ValueError(f"Could not load image from {image_path}")
+        return self.original_image
     
-    def resize_image(self, image, max_width=1200, max_height=800):
+    def convert_to_grayscale(self, image):
         """
-        Thay đổi kích thước ảnh để tối ưu hóa OCR
+        Convert image to grayscale.
         
         Args:
-            image (numpy.ndarray): Ảnh đầu vào
-            max_width (int): Chiều rộng tối đa
-            max_height (int): Chiều cao tối đa
+            image (numpy.ndarray): Input image
             
         Returns:
-            numpy.ndarray: Ảnh đã được resize
+            numpy.ndarray: Grayscale image
         """
-        height, width = image.shape[:2]
-        
-        # Tính tỷ lệ scale
-        scale_w = max_width / width
-        scale_h = max_height / height
-        scale = min(scale_w, scale_h, 1.0)  # Không phóng to ảnh
-        
-        if scale < 1.0:
-            new_width = int(width * scale)
-            new_height = int(height * scale)
-            image = cv2.resize(image, (new_width, new_height), interpolation=cv2.INTER_AREA)
-            
-        return image
+        if len(image.shape) == 3:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = image.copy()
+        self.grayscale_image = gray
+        return gray
     
-    def denoise_image(self, image):
+    def reduce_noise(self, image, method='bilateral'):
         """
-        Giảm nhiễu trong ảnh bằng Gaussian và Median blur
+        Apply noise reduction to the image.
         
         Args:
-            image (numpy.ndarray): Ảnh đầu vào
+            image (numpy.ndarray): Input grayscale image
+            method (str): Noise reduction method ('bilateral', 'gaussian', 'median')
             
         Returns:
-            numpy.ndarray: Ảnh đã được làm sạch nhiễu
+            numpy.ndarray: Denoised image
         """
-        # Áp dụng Gaussian blur để làm mịn
-        blurred = cv2.GaussianBlur(image, (3, 3), 0)
+        if method == 'bilateral':
+            # Bilateral filter preserves edges while reducing noise
+            denoised = cv2.bilateralFilter(image, 9, 75, 75)
+        elif method == 'gaussian':
+            # Gaussian blur for general noise reduction
+            denoised = cv2.GaussianBlur(image, (5, 5), 0)
+        elif method == 'median':
+            # Median blur effective for salt-and-pepper noise
+            denoised = cv2.medianBlur(image, 5)
+        else:
+            denoised = image
         
-        # Áp dụng Median blur để loại bỏ nhiễu salt & pepper
-        denoised = cv2.medianBlur(blurred, 3)
-        
-        if self.debug_mode:
-            cv2.imwrite("debug_denoised.jpg", denoised)
-            
         return denoised
+    
+    def apply_adaptive_threshold(self, image, block_size=11, C=2):
+        """
+        Apply adaptive thresholding to handle uneven lighting.
+        
+        Args:
+            image (numpy.ndarray): Input grayscale image
+            block_size (int): Size of pixel neighborhood (must be odd)
+            C (int): Constant subtracted from weighted mean
+            
+        Returns:
+            numpy.ndarray: Binary thresholded image
+        """
+        # Ensure block_size is odd
+        if block_size % 2 == 0:
+            block_size += 1
+        
+        # Apply adaptive thresholding
+        binary = cv2.adaptiveThreshold(
+            image,
+            255,
+            cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY,
+            block_size,
+            C
+        )
+        
+        return binary
+    
+    def detect_inverted_text(self, binary_image):
+        """
+        Detect if text is inverted (light text on dark background).
+        
+        Args:
+            binary_image (numpy.ndarray): Binary thresholded image
+            
+        Returns:
+            bool: True if text appears to be inverted, False otherwise
+        """
+        # Calculate the ratio of white pixels to total pixels
+        total_pixels = binary_image.size
+        white_pixels = np.sum(binary_image == 255)
+        white_ratio = white_pixels / total_pixels
+        
+        # If more than 50% of pixels are white (dark text on light background),
+        # the image is likely NOT inverted
+        # If less than 50%, the text is likely inverted
+        is_inverted = white_ratio < 0.5
+        
+        return is_inverted
+    
+    def invert_image(self, image):
+        """
+        Invert image colors (bitwise NOT operation).
+        
+        Args:
+            image (numpy.ndarray): Input image
+            
+        Returns:
+            numpy.ndarray: Inverted image
+        """
+        return cv2.bitwise_not(image)
     
     def enhance_contrast(self, image):
         """
-        Tăng cường độ tương phản của ảnh bằng CLAHE
+        Enhance image contrast using histogram equalization.
         
         Args:
-            image (numpy.ndarray): Ảnh đầu vào
+            image (numpy.ndarray): Input grayscale image
             
         Returns:
-            numpy.ndarray: Ảnh đã được tăng cường độ tương phản
+            numpy.ndarray: Contrast-enhanced image
         """
-        # Chuyển sang LAB color space
-        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-        l, a, b = cv2.split(lab)
-        
-        # Áp dụng CLAHE trên kênh L
+        # Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)
         clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-        l = clahe.apply(l)
-        
-        # Ghép lại các kênh
-        enhanced = cv2.merge([l, a, b])
-        enhanced = cv2.cvtColor(enhanced, cv2.COLOR_LAB2BGR)
-        
-        if self.debug_mode:
-            cv2.imwrite("debug_enhanced.jpg", enhanced)
-            
+        enhanced = clahe.apply(image)
         return enhanced
     
-    def adaptive_threshold(self, image):
+    def deskew_image(self, image):
         """
-        Áp dụng adaptive thresholding để xử lý độ sáng không đồng đều
+        Detect and correct skew in the image.
         
         Args:
-            image (numpy.ndarray): Ảnh đầu vào
+            image (numpy.ndarray): Input binary image
             
         Returns:
-            numpy.ndarray: Ảnh đã được binarize
+            numpy.ndarray: Deskewed image
         """
-        # Chuyển sang grayscale
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        # Find all non-zero points (text pixels)
+        coords = np.column_stack(np.where(image > 0))
         
-        # Áp dụng adaptive thresholding với Gaussian
-        binary = cv2.adaptiveThreshold(
-            gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
+        if len(coords) < 5:
+            # Not enough points to determine skew
+            return image
+        
+        # Calculate the angle of skew
+        angle = cv2.minAreaRect(coords)[-1]
+        
+        # Normalize the angle
+        if angle < -45:
+            angle = -(90 + angle)
+        else:
+            angle = -angle
+        
+        # Only deskew if angle is significant (more than 0.5 degrees)
+        if abs(angle) < 0.5:
+            return image
+        
+        # Rotate the image to deskew
+        (h, w) = image.shape[:2]
+        center = (w // 2, h // 2)
+        M = cv2.getRotationMatrix2D(center, angle, 1.0)
+        rotated = cv2.warpAffine(
+            image,
+            M,
+            (w, h),
+            flags=cv2.INTER_CUBIC,
+            borderMode=cv2.BORDER_REPLICATE
         )
         
-        if self.debug_mode:
-            cv2.imwrite("debug_adaptive_thresh.jpg", binary)
+        return rotated
+    
+    def remove_borders(self, image, border_size=10):
+        """
+        Remove borders from the image.
+        
+        Args:
+            image (numpy.ndarray): Input image
+            border_size (int): Size of border to remove (pixels)
             
+        Returns:
+            numpy.ndarray: Image with borders removed
+        """
+        h, w = image.shape[:2]
+        if h <= 2 * border_size or w <= 2 * border_size:
+            return image
+        
+        return image[border_size:h-border_size, border_size:w-border_size]
+    
+    def process_image(self, image_path, apply_deskew=False):
+        """
+        Complete image processing pipeline for OCR optimization.
+        
+        Args:
+            image_path (str): Path to the input image
+            apply_deskew (bool): Whether to apply deskewing
+            
+        Returns:
+            numpy.ndarray: Processed image ready for OCR
+        """
+        # Step 1: Load image
+        image = self.load_image(image_path)
+        
+        # Step 2: Convert to grayscale
+        gray = self.convert_to_grayscale(image)
+        
+        # Step 3: Enhance contrast
+        enhanced = self.enhance_contrast(gray)
+        
+        # Step 4: Reduce noise
+        denoised = self.reduce_noise(enhanced, method='bilateral')
+        
+        # Step 5: Apply adaptive thresholding
+        binary = self.apply_adaptive_threshold(denoised, block_size=11, C=2)
+        
+        # Step 6: Detect and handle inverted text
+        if self.detect_inverted_text(binary):
+            binary = self.invert_image(binary)
+        
+        # Step 7: Optional deskewing
+        if apply_deskew:
+            binary = self.deskew_image(binary)
+        
+        # Store processed image
+        self.processed_image = binary
+        
         return binary
     
-    def detect_and_fix_inversion(self, binary_image):
+    def get_processed_image_pil(self):
         """
-        Phát hiện và sửa ảnh đảo ngược màu (chữ sáng trên nền tối)
+        Get the processed image as a PIL Image object.
         
-        Args:
-            binary_image (numpy.ndarray): Ảnh đã được binarize
-            
         Returns:
-            numpy.ndarray: Ảnh đã được sửa đảo ngược
+            PIL.Image: Processed image
         """
-        # Tính tỷ lệ pixel trắng
-        white_pixels = np.sum(binary_image == 255)
-        total_pixels = binary_image.shape[0] * binary_image.shape[1]
-        white_ratio = white_pixels / total_pixels
-        
-        # Nếu tỷ lệ pixel trắng > 50%, có thể là ảnh đảo ngược
-        if white_ratio > 0.5:
-            # Đảo ngược màu
-            inverted = cv2.bitwise_not(binary_image)
-            if self.debug_mode:
-                cv2.imwrite("debug_inverted.jpg", inverted)
-            return inverted
-        
-        return binary_image
-    
-    def morphological_operations(self, binary_image):
-        """
-        Áp dụng các phép toán hình thái học để làm sạch ảnh
-        
-        Args:
-            binary_image (numpy.ndarray): Ảnh đã được binarize
-            
-        Returns:
-            numpy.ndarray: Ảnh đã được làm sạch
-        """
-        # Kernel cho các phép toán hình thái học
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (2, 2))
-        
-        # Loại bỏ nhiễu nhỏ
-        cleaned = cv2.morphologyEx(binary_image, cv2.MORPH_CLOSE, kernel)
-        
-        # Làm mỏng các đường viền
-        cleaned = cv2.morphologyEx(cleaned, cv2.MORPH_OPEN, kernel)
-        
-        if self.debug_mode:
-            cv2.imwrite("debug_morphological.jpg", cleaned)
-            
-        return cleaned
-    
-    def process_image(self, image_path, output_path=None):
-        """
-        Xử lý ảnh hoàn chỉnh với pipeline tối ưu cho OCR
-        
-        Args:
-            image_path (str): Đường dẫn đến ảnh đầu vào
-            output_path (str): Đường dẫn lưu ảnh đã xử lý (tùy chọn)
-            
-        Returns:
-            numpy.ndarray: Ảnh đã được xử lý tối ưu cho OCR
-        """
-        try:
-            # Tải ảnh
-            image = self.load_image(image_path)
-            if image is None:
-                return None
-            
-            # Thay đổi kích thước
-            image = self.resize_image(image)
-            
-            # Giảm nhiễu
-            image = self.denoise_image(image)
-            
-            # Tăng cường độ tương phản
-            image = self.enhance_contrast(image)
-            
-            # Adaptive thresholding
-            binary = self.adaptive_threshold(image)
-            
-            # Phát hiện và sửa đảo ngược
-            binary = self.detect_and_fix_inversion(binary)
-            
-            # Phép toán hình thái học
-            binary = self.morphological_operations(binary)
-            
-            # Lưu ảnh kết quả nếu có đường dẫn output
-            if output_path:
-                cv2.imwrite(output_path, binary)
-                
-            return binary
-            
-        except Exception as e:
-            print(f"Lỗi trong quá trình xử lý ảnh: {e}")
+        if self.processed_image is None:
             return None
+        return Image.fromarray(self.processed_image)
     
-    def process_from_array(self, image_array):
+    def get_original_image_pil(self):
         """
-        Xử lý ảnh từ numpy array (cho camera)
+        Get the original image as a PIL Image object.
+        
+        Returns:
+            PIL.Image: Original image
+        """
+        if self.original_image is None:
+            return None
+        # Convert BGR to RGB for PIL
+        rgb_image = cv2.cvtColor(self.original_image, cv2.COLOR_BGR2RGB)
+        return Image.fromarray(rgb_image)
+    
+    def save_processed_image(self, output_path):
+        """
+        Save the processed image to file.
         
         Args:
-            image_array (numpy.ndarray): Ảnh dạng numpy array
-            
-        Returns:
-            numpy.ndarray: Ảnh đã được xử lý
+            output_path (str): Path to save the processed image
         """
-        try:
-            # Thay đổi kích thước
-            image = self.resize_image(image_array)
-            
-            # Giảm nhiễu
-            image = self.denoise_image(image)
-            
-            # Tăng cường độ tương phản
-            image = self.enhance_contrast(image)
-            
-            # Adaptive thresholding
-            binary = self.adaptive_threshold(image)
-            
-            # Phát hiện và sửa đảo ngược
-            binary = self.detect_and_fix_inversion(binary)
-            
-            # Phép toán hình thái học
-            binary = self.morphological_operations(binary)
-            
-            return binary
-            
-        except Exception as e:
-            print(f"Lỗi trong quá trình xử lý ảnh từ array: {e}")
-            return None
-
-
-def test_image_processor():
-    """Hàm test cho ImageProcessor"""
-    processor = ImageProcessor()
-    processor.set_debug_mode(True)
-    
-    # Test với ảnh mẫu (nếu có)
-    test_image_path = "test_image.jpg"
-    if os.path.exists(test_image_path):
-        result = processor.process_image(test_image_path, "processed_test.jpg")
-        if result is not None:
-            print("Xử lý ảnh thành công!")
+        if self.processed_image is not None:
+            cv2.imwrite(output_path, self.processed_image)
         else:
-            print("Lỗi trong quá trình xử lý ảnh!")
-    else:
-        print("Không tìm thấy ảnh test!")
+            raise ValueError("No processed image to save. Process an image first.")
 
-
-if __name__ == "__main__":
-    test_image_processor()
