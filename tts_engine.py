@@ -1,16 +1,22 @@
 """
 Text-to-Speech Engine Module for VisionSpeak
-Handles text-to-speech conversion using pyttsx3.
+Handles text-to-speech conversion using pyttsx3 and gTTS.
 """
 
 import pyttsx3
 import threading
+from gtts import gTTS
+import pygame
+import tempfile
+import os
+from langdetect import detect, LangDetectException
 
 
 class TTSEngine:
     """
-    Text-to-Speech Engine wrapper for pyttsx3.
+    Text-to-Speech Engine wrapper for pyttsx3 and gTTS.
     Provides text-to-speech functionality with configurable voice settings.
+    Automatically detects language and uses appropriate TTS engine.
     """
     
     def __init__(self):
@@ -18,14 +24,31 @@ class TTSEngine:
         self.engine = pyttsx3.init()
         self.is_speaking = False
         self.speech_thread = None
+        self.pygame_available = False
         
         # Default settings
         self.rate = 150  # Speaking rate (words per minute)
         self.volume = 1.0  # Volume (0.0 to 1.0)
+        self.use_gtts_for_vietnamese = True  # Use gTTS for Vietnamese by default
+        self.auto_detect_language = True  # Auto-detect language
         
         # Apply default settings
         self.engine.setProperty('rate', self.rate)
         self.engine.setProperty('volume', self.volume)
+        
+        # Initialize pygame mixer for playing gTTS audio
+        try:
+            # Quit first if already initialized
+            if pygame.mixer.get_init():
+                pygame.mixer.quit()
+            
+            pygame.mixer.init(frequency=22050, size=-16, channels=2, buffer=512)
+            self.pygame_available = True
+        except Exception as e:
+            print(f"Warning: pygame mixer init failed: {e}")
+            print("gTTS will not be available. Using pyttsx3 only.")
+            self.pygame_available = False
+            self.use_gtts_for_vietnamese = False  # Fallback to pyttsx3
     
     def set_rate(self, rate):
         """
@@ -98,46 +121,146 @@ class TTSEngine:
         
         return voice_info
     
-    def speak(self, text, blocking=True):
+    def detect_language(self, text):
+        """
+        Detect the language of the given text.
+        
+        Args:
+            text (str): Text to detect language from
+            
+        Returns:
+            str: Language code (e.g., 'en', 'vi') or 'en' if detection fails
+        """
+        if not text or not text.strip():
+            return 'en'
+        
+        try:
+            lang = detect(text)
+            return lang
+        except LangDetectException:
+            return 'en'  # Default to English if detection fails
+    
+    def _speak_with_gtts(self, text, lang='vi'):
+        """
+        Speak text using Google TTS (gTTS).
+        Requires pygame mixer and Internet connection.
+        
+        Args:
+            text (str): Text to speak
+            lang (str): Language code (default: 'vi' for Vietnamese)
+        """
+        if not self.pygame_available:
+            # Fallback to pyttsx3
+            print("Warning: pygame not available, using pyttsx3 instead")
+            self.engine.say(text)
+            self.engine.runAndWait()
+            return
+        
+        try:
+            # Create temporary file for audio
+            temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp3')
+            temp_file.close()
+            
+            # Generate speech with gTTS
+            tts = gTTS(text=text, lang=lang, slow=False)
+            tts.save(temp_file.name)
+            
+            # Reinitialize mixer if needed
+            if not pygame.mixer.get_init():
+                pygame.mixer.init(frequency=22050, size=-16, channels=2, buffer=512)
+            
+            # Play audio with pygame
+            pygame.mixer.music.load(temp_file.name)
+            pygame.mixer.music.set_volume(self.volume)
+            pygame.mixer.music.play()
+            
+            # Wait for playback to finish
+            while pygame.mixer.music.get_busy():
+                pygame.time.Clock().tick(10)
+            
+            # Cleanup
+            try:
+                os.unlink(temp_file.name)
+            except Exception:
+                pass
+                
+        except Exception as e:
+            # Fallback to pyttsx3 on error
+            print(f"Warning: gTTS failed ({e}), falling back to pyttsx3")
+            try:
+                self.engine.say(text)
+                self.engine.runAndWait()
+            except:
+                pass
+    
+    def speak(self, text, blocking=True, lang=None):
         """
         Convert text to speech and play it.
+        Automatically detects language and uses appropriate TTS engine.
         
         Args:
             text (str): Text to speak
             blocking (bool): If True, wait for speech to complete before returning
+            lang (str, optional): Force specific language ('en', 'vi', etc.)
         """
         if not text or not text.strip():
             return
+        
+        # Detect language if not specified
+        if lang is None and self.auto_detect_language:
+            detected_lang = self.detect_language(text)
+        else:
+            detected_lang = lang if lang else 'en'
+        
+        # Decide which engine to use
+        use_gtts = (detected_lang == 'vi' and self.use_gtts_for_vietnamese)
         
         if blocking:
             # Blocking mode: wait for speech to complete
             self.is_speaking = True
             try:
-                self.engine.say(text)
-                self.engine.runAndWait()
+                if use_gtts:
+                    self._speak_with_gtts(text, lang=detected_lang)
+                else:
+                    self.engine.say(text)
+                    self.engine.runAndWait()
             except Exception as e:
                 print(f"TTS Error: {e}")
             finally:
                 self.is_speaking = False
         else:
             # Non-blocking mode: speak in a separate thread
-            self.speak_async(text)
+            self.speak_async(text, lang=detected_lang)
     
-    def speak_async(self, text):
+    def speak_async(self, text, lang=None):
         """
         Speak text asynchronously in a separate thread.
+        Automatically detects language and uses appropriate TTS engine.
         
         Args:
             text (str): Text to speak
+            lang (str, optional): Force specific language ('en', 'vi', etc.)
         """
         if self.is_speaking:
             self.stop()
         
+        # Detect language if not specified
+        if lang is None and self.auto_detect_language:
+            detected_lang = self.detect_language(text)
+        else:
+            detected_lang = lang if lang else 'en'
+        
+        # Decide which engine to use
+        use_gtts = (detected_lang == 'vi' and self.use_gtts_for_vietnamese)
+        
         def _speak():
             self.is_speaking = True
             try:
-                self.engine.say(text)
-                self.engine.runAndWait()
+                if use_gtts:
+                    self._speak_with_gtts(text, lang=detected_lang)
+                else:
+                    self.engine.say(text)
+                    self.engine.runAndWait()
             except Exception as e:
                 print(f"TTS Error: {e}")
             finally:
@@ -151,6 +274,10 @@ class TTSEngine:
         if self.is_speaking:
             try:
                 self.engine.stop()
+            except Exception:
+                pass
+            try:
+                pygame.mixer.music.stop()
             except Exception:
                 pass
             self.is_speaking = False
@@ -195,10 +322,30 @@ class TTSEngine:
         """Reset all settings to default values."""
         self.set_rate(150)
         self.set_volume(1.0)
+        self.use_gtts_for_vietnamese = True
+        self.auto_detect_language = True
         # Reset to first available voice
         voices = self.get_available_voices()
         if voices:
             self.engine.setProperty('voice', voices[0].id)
+    
+    def set_auto_detect_language(self, enabled):
+        """
+        Enable or disable automatic language detection.
+        
+        Args:
+            enabled (bool): True to enable auto-detection, False to disable
+        """
+        self.auto_detect_language = enabled
+    
+    def set_use_gtts_for_vietnamese(self, enabled):
+        """
+        Enable or disable using gTTS for Vietnamese text.
+        
+        Args:
+            enabled (bool): True to use gTTS for Vietnamese, False to use pyttsx3
+        """
+        self.use_gtts_for_vietnamese = enabled
     
     def __del__(self):
         """Cleanup when object is destroyed."""

@@ -2,15 +2,20 @@
 # Adaptive OCR and TTS Desktop Application
 
 # Image Processing
-opencv-python==4.8.1.78
-Pillow==10.1.0
-numpy==1.26.2
+opencv-python>=4.8.0
+Pillow>=10.0.0
+numpy>=1.26.0
 
 # OCR Engine
 pytesseract==0.3.10
 
 # Text-to-Speech
 pyttsx3==2.90
+gTTS==2.4.0
+pygame==2.5.2
+
+# Language Detection
+langdetect==1.0.9
 
 # Note: Tesseract OCR Engine must be installed separately
 # See INSTALL.md for installation instructions

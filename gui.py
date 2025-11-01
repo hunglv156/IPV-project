@@ -183,6 +183,18 @@ class VisionSpeakApp:
         )
         self.chk_deskew.grid(row=0, column=8, padx=2)
         
+        # OCR Language selection
+        ttk.Label(toolbar, text="OCR Lang:").grid(row=0, column=9, padx=(10, 2))
+        self.ocr_lang_var = tk.StringVar(value="eng+vie")
+        self.ocr_lang_combo = ttk.Combobox(
+            toolbar,
+            textvariable=self.ocr_lang_var,
+            values=["eng", "vie", "eng+vie"],
+            state='readonly',
+            width=10
+        )
+        self.ocr_lang_combo.grid(row=0, column=10, padx=2)
+        
         # Initially disable processing buttons
         self.update_button_states()
     
@@ -440,8 +452,11 @@ class VisionSpeakApp:
                 self.progress_bar.start()
                 self.update_status("Running OCR...")
                 
+                # Get selected language
+                ocr_lang = self.ocr_lang_var.get()
+                
                 # Run OCR
-                text = self.ocr_engine.recognize_text(image_to_ocr, psm=6)
+                text = self.ocr_engine.recognize_text(image_to_ocr, psm=6, lang=ocr_lang)
                 
                 # Display recognized text
                 self.text_output.delete(1.0, tk.END)
@@ -494,7 +509,8 @@ class VisionSpeakApp:
                 
                 # Step 2: Run OCR
                 self.update_status("Running OCR...")
-                text = self.ocr_engine.recognize_text(processed, psm=6)
+                ocr_lang = self.ocr_lang_var.get()
+                text = self.ocr_engine.recognize_text(processed, psm=6, lang=ocr_lang)
                 
                 # Display recognized text
                 self.text_output.delete(1.0, tk.END)
@@ -638,9 +654,27 @@ class VisionSpeakApp:
         )
         voice_combo.grid(row=2, column=1, columnspan=2, padx=10, pady=10)
         
+        # Auto-detect language checkbox
+        auto_detect_var = tk.BooleanVar(value=self.tts_engine.auto_detect_language)
+        chk_auto_detect = ttk.Checkbutton(
+            settings_window,
+            text="Auto-detect language",
+            variable=auto_detect_var
+        )
+        chk_auto_detect.grid(row=3, column=0, columnspan=3, padx=10, pady=5, sticky=tk.W)
+        
+        # Use gTTS for Vietnamese checkbox
+        gtts_vi_var = tk.BooleanVar(value=self.tts_engine.use_gtts_for_vietnamese)
+        chk_gtts_vi = ttk.Checkbutton(
+            settings_window,
+            text="Use Google TTS for Vietnamese (better quality)",
+            variable=gtts_vi_var
+        )
+        chk_gtts_vi.grid(row=4, column=0, columnspan=3, padx=10, pady=5, sticky=tk.W)
+        
         # Buttons
         button_frame = ttk.Frame(settings_window)
-        button_frame.grid(row=3, column=0, columnspan=3, pady=20)
+        button_frame.grid(row=5, column=0, columnspan=3, pady=20)
         
         def apply_settings():
             self.tts_engine.set_rate(rate_var.get())
@@ -651,6 +685,10 @@ class VisionSpeakApp:
                 voice_id = voices[voice_combo.current()].id
                 self.tts_engine.set_voice(voice_id=voice_id)
             
+            # Set language detection settings
+            self.tts_engine.set_auto_detect_language(auto_detect_var.get())
+            self.tts_engine.set_use_gtts_for_vietnamese(gtts_vi_var.get())
+            
             messagebox.showinfo("Success", "TTS settings applied!")
             settings_window.destroy()
         
@@ -659,15 +697,20 @@ class VisionSpeakApp:
             original_rate = self.tts_engine.rate
             original_volume = self.tts_engine.volume
             original_voice = self.tts_engine.engine.getProperty('voice')
+            original_auto_detect = self.tts_engine.auto_detect_language
+            original_gtts_vi = self.tts_engine.use_gtts_for_vietnamese
             
             self.tts_engine.set_rate(rate_var.get())
             self.tts_engine.set_volume(volume_var.get())
             if voice_combo.current() >= 0:
                 voice_id = voices[voice_combo.current()].id
                 self.tts_engine.set_voice(voice_id=voice_id)
+            self.tts_engine.set_auto_detect_language(auto_detect_var.get())
+            self.tts_engine.set_use_gtts_for_vietnamese(gtts_vi_var.get())
             
-            # Speak test phrase
-            self.tts_engine.speak("This is a test of the text to speech settings.", blocking=False)
+            # Speak test phrase (English and Vietnamese)
+            test_text = "This is a test. Đây là bài kiểm tra."
+            self.tts_engine.speak(test_text, blocking=False)
         
         ttk.Button(button_frame, text="Test", command=test_settings).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="Apply", command=apply_settings).pack(side=tk.LEFT, padx=5)
@@ -678,7 +721,7 @@ class VisionSpeakApp:
         about_text = """VisionSpeak
 Adaptive OCR and TTS Desktop Application
 
-Version: 1.0
+Version: 1.1
 
 An advanced application for optical character recognition
 with intelligent image pre-processing and text-to-speech
@@ -689,7 +732,9 @@ Features:
 • Adaptive thresholding for uneven lighting
 • Automatic text inversion detection
 • Noise reduction and enhancement
-• Text-to-Speech output
+• Multi-language OCR (English, Vietnamese)
+• Text-to-Speech with automatic language detection
+• Google TTS for Vietnamese (high quality)
 • Support for multiple image formats
 
 Developed for real-world OCR scenarios with
@@ -704,22 +749,30 @@ challenging image conditions.
 1. Open an Image
    Click 'Open Image' or press Ctrl+O to load an image file.
 
-2. Process the Image (Optional but Recommended)
+2. Select OCR Language
+   Choose the appropriate language from the 'OCR Lang' dropdown:
+   • eng - For English text
+   • vie - For Vietnamese text
+   • eng+vie - For mixed language text
+
+3. Process the Image (Optional but Recommended)
    Click 'Process Image' to apply advanced pre-processing:
    • Noise reduction
    • Adaptive thresholding
    • Automatic text inversion detection
    • Optional deskewing
 
-3. Run OCR
+4. Run OCR
    Click 'Run OCR' to extract text from the image.
    Or use 'Process & OCR' to do both steps at once.
 
-4. Listen to Text
+5. Listen to Text
    Click 'Speak' to hear the recognized text.
-   Use 'Stop' to interrupt speech.
+   • Automatic language detection enabled by default
+   • Vietnamese text uses Google TTS for better quality
+   • Use 'Stop' to interrupt speech
 
-5. Save Results
+6. Save Results
    Save recognized text using File > Save Text.
 
 Tips:
@@ -727,6 +780,7 @@ Tips:
 • Process images before OCR for best results
 • Adjust TTS settings in Speech > TTS Settings
 • Use keyboard shortcuts for faster workflow
+• For Vietnamese: Make sure to install Vietnamese language pack for Tesseract
 """
         messagebox.showinfo("Instructions", instructions)
 

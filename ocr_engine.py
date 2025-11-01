@@ -27,9 +27,9 @@ class OCREngine:
         self.last_recognized_text = ""
         self.confidence_scores = []
     
-    def recognize_text(self, image, psm=6, lang='eng', config=''):
+    def recognize_text(self, image, psm=6, lang='eng', config='', oem=3):
         """
-        Perform OCR on the given image.
+        Perform OCR on the given image with optimized configuration.
         
         Args:
             image: Input image (PIL Image, numpy array, or file path)
@@ -39,6 +39,7 @@ class OCREngine:
                        11 = Sparse text. Find as much text as possible
             lang (str): Language for OCR (default: 'eng')
             config (str): Additional Tesseract configuration
+            oem (int): OCR Engine Mode (0=Legacy, 1=LSTM, 2=Legacy+LSTM, 3=Default)
             
         Returns:
             str: Recognized text
@@ -61,8 +62,10 @@ class OCREngine:
         else:
             raise ValueError("Unsupported image type")
         
-        # Build custom configuration
-        custom_config = f'--psm {psm}'
+        # Build optimized configuration
+        # OEM 3 = Default (best available engine)
+        # OEM 1 = LSTM only (neural network, usually best for modern text)
+        custom_config = f'--oem {oem} --psm {psm}'
         if config:
             custom_config += f' {config}'
         
@@ -147,6 +150,7 @@ class OCREngine:
     def recognize_with_multiple_psm(self, image, lang='eng'):
         """
         Try multiple PSM modes and return the result with highest confidence.
+        This is SLOWER but more accurate for difficult images.
         
         Args:
             image: Input image (PIL Image, numpy array, or file path)
@@ -156,6 +160,10 @@ class OCREngine:
             dict: Best OCR result with text, psm mode, and confidence
         """
         # PSM modes to try (in order of preference)
+        # 6 = Uniform block of text (most common)
+        # 3 = Fully automatic (good for complex layouts)
+        # 11 = Sparse text (good for few words)
+        # 4 = Single column of text
         psm_modes = [6, 3, 11, 4]
         
         best_result = {
@@ -181,6 +189,26 @@ class OCREngine:
                 continue
         
         return best_result
+    
+    def recognize_optimized(self, image, lang='eng', auto_psm=False):
+        """
+        Optimized OCR with best practices applied.
+        
+        Args:
+            image: Input image (PIL Image, numpy array, or file path)
+            lang (str): Language for OCR
+            auto_psm (bool): Automatically try multiple PSM modes (slower but more accurate)
+            
+        Returns:
+            str: Recognized text with best configuration
+        """
+        if auto_psm:
+            # Try multiple PSM modes and return best result
+            result = self.recognize_with_multiple_psm(image, lang=lang)
+            return result['text']
+        else:
+            # Use optimized default: OEM 1 (LSTM only) for best accuracy
+            return self.recognize_text(image, psm=6, lang=lang, oem=1)
     
     def get_supported_languages(self):
         """
