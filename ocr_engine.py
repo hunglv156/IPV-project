@@ -27,7 +27,7 @@ class OCREngine:
         self.last_recognized_text = ""
         self.confidence_scores = []
     
-    def recognize_text(self, image, psm=6, lang='eng', config='', oem=3):
+    def recognize_text(self, image, psm=6, lang='eng', config='', oem=3, filter_noise=False):
         """
         Perform OCR on the given image with optimized configuration.
         
@@ -40,6 +40,9 @@ class OCREngine:
             lang (str): Language for OCR (default: 'eng')
             config (str): Additional Tesseract configuration
             oem (int): OCR Engine Mode (0=Legacy, 1=LSTM, 2=Legacy+LSTM, 3=Default)
+            filter_noise (bool): Filter out low-confidence words (default: False)
+                                 Set to True for images with graphics/logos/pictures
+                                 WARNING: May filter out some valid text with low confidence
             
         Returns:
             str: Recognized text
@@ -71,11 +74,81 @@ class OCREngine:
         
         # Perform OCR
         try:
-            text = pytesseract.image_to_string(
-                pil_image,
-                lang=lang,
-                config=custom_config
-            )
+            if filter_noise:
+                # Use image_to_data to get confidence scores
+                data = pytesseract.image_to_data(
+                    pil_image,
+                    lang=lang,
+                    config=custom_config,
+                    output_type=pytesseract.Output.DICT
+                )
+                
+                # Filter words by confidence to remove noise from non-text regions
+                # Use image_to_data but reconstruct with better line handling
+                
+                filtered_lines = []
+                current_line = []
+                last_line_num = -1
+                
+                for i in range(len(data['text'])):
+                    word = data['text'][i].strip()
+                    conf = int(data['conf'][i]) if data['conf'][i] != '-1' else 0
+                    line_num = data['line_num'][i]
+                    
+                    # Skip empty words
+                    if not word:
+                        continue
+                    
+                    # Filtering logic - Balance between removing noise and keeping real text:
+                    # - conf >= 50: Always include (high quality)
+                    # - conf 20-49: Include if looks like real text
+                    # - conf < 20: Skip (almost certainly noise)
+                    
+                    include_word = False
+                    
+                    if conf >= 50:
+                        # High confidence - always include
+                        include_word = True
+                    elif conf >= 20:
+                        # Low-medium confidence - validate carefully
+                        alpha_count = sum(c.isalpha() or c.isdigit() for c in word)
+                        alpha_ratio = alpha_count / len(word) if len(word) > 0 else 0
+                        
+                        # Include if looks like text:
+                        # - Very high alpha ratio (> 80%) - likely real text even with low conf
+                        # - High alpha ratio (> 70%) and reasonable length
+                        # - Good alpha ratio (> 60%) and multi-char word
+                        if alpha_ratio > 0.8:
+                            include_word = True
+                        elif alpha_ratio > 0.7 and len(word) >= 2:
+                            include_word = True
+                        elif alpha_ratio > 0.6 and len(word) >= 3:
+                            include_word = True
+                    
+                    # Add word to current line
+                    if include_word:
+                        # New line detected
+                        if line_num != last_line_num and current_line:
+                            filtered_lines.append(' '.join(current_line))
+                            current_line = []
+                        
+                        current_line.append(word)
+                        last_line_num = line_num
+                
+                # Add last line
+                if current_line:
+                    filtered_lines.append(' '.join(current_line))
+                
+                # Reconstruct text with line breaks preserved
+                text = '\n'.join(filtered_lines)
+            else:
+                # Standard OCR without filtering
+                text = pytesseract.image_to_string(
+                    pil_image,
+                    lang=lang,
+                    config=custom_config
+                )
+            
             self.last_recognized_text = text.strip()
             return self.last_recognized_text
         except Exception as e:

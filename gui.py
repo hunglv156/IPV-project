@@ -87,8 +87,8 @@ class VisionSpeakApp:
         # Process menu
         process_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Process", menu=process_menu)
-        process_menu.add_command(label="Process Image", command=self.process_image, accelerator="Ctrl+P")
-        process_menu.add_command(label="Run OCR", command=self.run_ocr, accelerator="Ctrl+R")
+        # process_menu.add_command(label="Process Image", command=self.process_image, accelerator="Ctrl+P")
+        # process_menu.add_command(label="Run OCR", command=self.run_ocr, accelerator="Ctrl+R")
         process_menu.add_separator()
         process_menu.add_command(label="Process & OCR", command=self.process_and_ocr, accelerator="Ctrl+Shift+P")
         
@@ -128,21 +128,21 @@ class VisionSpeakApp:
         )
         self.btn_open.grid(row=0, column=0, padx=2)
         
-        # Process Image button
-        self.btn_process = ttk.Button(
-            toolbar,
-            text="🔧 Process Image",
-            command=self.process_image
-        )
-        self.btn_process.grid(row=0, column=1, padx=2)
+        # # Process Image button
+        # self.btn_process = ttk.Button(
+        #     toolbar,
+        #     text="🔧 Process Image",
+        #     command=self.process_image
+        # )
+        # self.btn_process.grid(row=0, column=1, padx=2)
         
-        # Run OCR button
-        self.btn_ocr = ttk.Button(
-            toolbar,
-            text="🔍 Run OCR",
-            command=self.run_ocr
-        )
-        self.btn_ocr.grid(row=0, column=2, padx=2)
+        # # Run OCR button
+        # self.btn_ocr = ttk.Button(
+        #     toolbar,
+        #     text="🔍 Run OCR",
+        #     command=self.run_ocr
+        # )
+        # self.btn_ocr.grid(row=0, column=2, padx=2)
         
         # Process & OCR button (combined)
         self.btn_process_ocr = ttk.Button(
@@ -150,10 +150,10 @@ class VisionSpeakApp:
             text="⚡ Process & OCR",
             command=self.process_and_ocr
         )
-        self.btn_process_ocr.grid(row=0, column=3, padx=2)
+        self.btn_process_ocr.grid(row=0, column=1, padx=2)
         
         # Separator
-        ttk.Separator(toolbar, orient=tk.VERTICAL).grid(row=0, column=4, padx=10, sticky=(tk.N, tk.S))
+        ttk.Separator(toolbar, orient=tk.VERTICAL).grid(row=0, column=2, padx=10, sticky=(tk.N, tk.S))
         
         # Speak button
         self.btn_speak = ttk.Button(
@@ -161,7 +161,7 @@ class VisionSpeakApp:
             text="🔊 Speak",
             command=self.speak_text
         )
-        self.btn_speak.grid(row=0, column=5, padx=2)
+        self.btn_speak.grid(row=0, column=3, padx=2)
         
         # Stop button
         self.btn_stop = ttk.Button(
@@ -169,31 +169,22 @@ class VisionSpeakApp:
             text="⏹ Stop",
             command=self.stop_speech
         )
-        self.btn_stop.grid(row=0, column=6, padx=2)
+        self.btn_stop.grid(row=0, column=4, padx=2)
         
         # Separator
-        ttk.Separator(toolbar, orient=tk.VERTICAL).grid(row=0, column=7, padx=10, sticky=(tk.N, tk.S))
-        
-        # Deskew checkbox
-        self.deskew_var = tk.BooleanVar(value=False)
-        self.chk_deskew = ttk.Checkbutton(
-            toolbar,
-            text="Apply Deskew",
-            variable=self.deskew_var
-        )
-        self.chk_deskew.grid(row=0, column=8, padx=2)
+        ttk.Separator(toolbar, orient=tk.VERTICAL).grid(row=0, column=5, padx=10, sticky=(tk.N, tk.S))
         
         # OCR Language selection
-        ttk.Label(toolbar, text="OCR Lang:").grid(row=0, column=9, padx=(10, 2))
-        self.ocr_lang_var = tk.StringVar(value="eng+vie")
+        ttk.Label(toolbar, text="OCR Lang:").grid(row=0, column=6, padx=(10, 2))
+        self.ocr_lang_var = tk.StringVar(value="vie")
         self.ocr_lang_combo = ttk.Combobox(
             toolbar,
             textvariable=self.ocr_lang_var,
-            values=["eng", "vie", "eng+vie"],
+            values=["vie", "eng", "eng+vie"],
             state='readonly',
             width=10
         )
-        self.ocr_lang_combo.grid(row=0, column=10, padx=2)
+        self.ocr_lang_combo.grid(row=0, column=7, padx=2)
         
         # Initially disable processing buttons
         self.update_button_states()
@@ -296,8 +287,8 @@ class VisionSpeakApp:
         state_process = 'normal' if has_image and not self.processing_in_progress else 'disabled'
         state_text = 'normal' if has_text and not self.tts_engine.is_busy() else 'disabled'
         
-        self.btn_process.config(state=state_process)
-        self.btn_ocr.config(state=state_process)
+        # self.btn_process.config(state=state_process)
+        # self.btn_ocr.config(state=state_process)
         self.btn_process_ocr.config(state=state_process)
         self.btn_speak.config(state=state_text)
     
@@ -397,11 +388,10 @@ class VisionSpeakApp:
                 self.progress_bar.start()
                 self.update_status("Processing image...")
                 
-                # Process image
-                apply_deskew = self.deskew_var.get()
+                # Process image (auto mode - deskew disabled by default)
                 processed = self.image_processor.process_image(
                     self.current_image_path,
-                    apply_deskew=apply_deskew
+                    apply_deskew='auto'
                 )
                 
                 # Display processed image
@@ -495,12 +485,11 @@ class VisionSpeakApp:
                 self.update_button_states()
                 self.progress_bar.start()
                 
-                # Step 1: Process image
+                # Step 1: Process image (auto mode - deskew disabled by default)
                 self.update_status("Processing image...")
-                apply_deskew = self.deskew_var.get()
                 processed = self.image_processor.process_image(
                     self.current_image_path,
-                    apply_deskew=apply_deskew
+                    apply_deskew='auto'
                 )
                 
                 # Display processed image
@@ -760,7 +749,7 @@ challenging image conditions.
    • Noise reduction
    • Adaptive thresholding
    • Automatic text inversion detection
-   • Optional deskewing
+   • Automatic contrast and sharpness adjustment
 
 4. Run OCR
    Click 'Run OCR' to extract text from the image.
@@ -776,8 +765,8 @@ challenging image conditions.
    Save recognized text using File > Save Text.
 
 Tips:
-• Enable 'Apply Deskew' for rotated images
-• Process images before OCR for best results
+• Process images before OCR for best results (especially for noisy/blurry/dark images)
+• Choose correct OCR language: 'vie' for Vietnamese, 'eng+vie' for mixed text
 • Adjust TTS settings in Speech > TTS Settings
 • Use keyboard shortcuts for faster workflow
 • For Vietnamese: Make sure to install Vietnamese language pack for Tesseract

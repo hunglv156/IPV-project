@@ -7,9 +7,9 @@
 ### 1. OCR tiếng Việt không có dấu?
 
 > **Vấn đề:** OCR trả về "Xin chao" thay vì "Xin chào"  
-> **Giải pháp:** Đảm bảo dropdown **"OCR Lang"** trong GUI đang chọn `vie` hoặc `eng+vie` (mặc định mới)
+> **Giải pháp:** ✅ **ĐÃ SỬA** - GUI mặc định dùng `vie` (tốt nhất cho tiếng Việt)
 
-📖 **Chi tiết:** Xem [FIX_VIETNAMESE_OCR.md](FIX_VIETNAMESE_OCR.md)
+📖 **Lưu ý:** Dùng `vie` cho tiếng Việt (không phải `eng+vie`) để có dấu chính xác nhất!
 
 ### 2. App không đọc được chữ viết tay?
 
@@ -33,10 +33,12 @@
   - Tesseract OCR với OEM mode optimized (LSTM engine)
   - Auto multiple PSM modes cho ảnh khó
   - Cải thiện 10-30% độ chính xác tùy loại ảnh
-- 🔊 **Text-to-Speech đa ngôn ngữ**:
+- 🔊 **Text-to-Speech đa ngôn ngữ (v1.2.1 - ĐÃ CẢI TIẾN)**:
   - Tự động nhận diện ngôn ngữ
+  - Ngắt nghỉ tự động theo dấu câu (. ! ? ;) và xuống dòng
+  - Pause 300ms giữa các câu cho speech tự nhiên
   - Google TTS cho tiếng Việt (chất lượng cao)
-  - pyttsx3 cho tiếng Anh
+  - pyttsx3 cho tiếng Anh (hoặc fallback)
 - 📊 **Giao diện trực quan**: Xem ảnh trước/sau xử lý
 - 🌐 **Hỗ trợ đa ngôn ngữ**: Tiếng Anh, Tiếng Việt, v.v.
 
@@ -74,6 +76,14 @@ pip install -r requirements.txt
 **Lưu ý:** Ứng dụng sử dụng Google TTS cho tiếng Việt, cần kết nối Internet khi đọc văn bản tiếng Việt lần đầu.
 
 ## 📖 Sử dụng
+
+### Kiểm tra hệ thống (Quick Test)
+
+```bash
+python test_quick.py
+```
+
+Kết quả phải: **✅ TẤT CẢ TEST PASSED!**
 
 ### Chạy ứng dụng GUI
 
@@ -149,9 +159,11 @@ VisionSpeak xử lý được:
 
 - **README.md** (file này) - Hướng dẫn nhanh
 - **INSTALL.md** - Hướng dẫn cài đặt chi tiết
-- **OPTIMIZATION_NOTES.md** - Chi tiết các tối ưu v1.2 (MỚI) ⭐
-- **FIX_VIETNAMESE_OCR.md** - Hướng dẫn sửa lỗi tiếng Việt không dấu
+- **GIAI_THICH_XU_LY_ANH.md** - Giải thích chi tiết 13 bước xử lý ảnh (MỚI) ⭐⭐⭐
+- **FINAL_SUMMARY.md** - Tổng kết hoàn chỉnh v1.2.1 ⭐
+- **TTS_IMPROVEMENTS.md** - Cải tiến TTS ngắt nghỉ theo dấu câu ⭐
 - **VIETNAMESE_SUPPORT.md** - Hỗ trợ đầy đủ tiếng Việt
+- **HANDWRITING_LIMITATION.md** - Giới hạn chữ viết tay
 
 ## ⚙️ Yêu cầu hệ thống
 

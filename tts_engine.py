@@ -37,18 +37,36 @@ class TTSEngine:
         self.engine.setProperty('volume', self.volume)
         
         # Initialize pygame mixer for playing gTTS audio
-        try:
-            # Quit first if already initialized
-            if pygame.mixer.get_init():
-                pygame.mixer.quit()
-            
-            pygame.mixer.init(frequency=22050, size=-16, channels=2, buffer=512)
-            self.pygame_available = True
-        except Exception as e:
-            print(f"Warning: pygame mixer init failed: {e}")
-            print("gTTS will not be available. Using pyttsx3 only.")
-            self.pygame_available = False
-            self.use_gtts_for_vietnamese = False  # Fallback to pyttsx3
+        # Try multiple initialization methods for cross-platform compatibility
+        self.pygame_available = False
+        
+        init_methods = [
+            # Method 1: Default settings
+            {'frequency': 22050, 'size': -16, 'channels': 2, 'buffer': 512},
+            # Method 2: Larger buffer (sometimes helps on macOS)
+            {'frequency': 44100, 'size': -16, 'channels': 2, 'buffer': 4096},
+            # Method 3: Minimal settings
+            {'frequency': 22050, 'size': -16, 'channels': 1, 'buffer': 2048},
+        ]
+        
+        for method_idx, settings in enumerate(init_methods):
+            try:
+                # Quit first if already initialized
+                if pygame.mixer.get_init():
+                    pygame.mixer.quit()
+                
+                pygame.mixer.init(**settings)
+                self.pygame_available = True
+                # Success - break out of loop
+                break
+            except Exception as e:
+                # Try next method
+                if method_idx == len(init_methods) - 1:
+                    # All methods failed
+                    print(f"Warning: pygame mixer init failed after {len(init_methods)} attempts")
+                    print("gTTS will not be available. Using pyttsx3 for all languages.")
+                    self.pygame_available = False
+                    self.use_gtts_for_vietnamese = False  # Fallback to pyttsx3
     
     def set_rate(self, rate):
         """
@@ -140,6 +158,42 @@ class TTSEngine:
         except LangDetectException:
             return 'en'  # Default to English if detection fails
     
+    def _split_text_by_punctuation(self, text):
+        """
+        Split text into sentences based on punctuation marks ONLY.
+        KHÔNG ngắt ở xuống dòng - chỉ ngắt ở dấu câu thực sự.
+        
+        Args:
+            text (str): Input text
+            
+        Returns:
+            list: List of sentences
+        """
+        import re
+        
+        # Replace newlines with SPACE (không phải dấu chấm)
+        # → Xuống dòng KHÔNG tạo pause
+        text = text.replace('\n', ' ')
+        
+        # Split by punctuation marks: . ! ? ; ,
+        # Pattern: Split on these punctuation marks but keep them
+        sentences = re.split(r'([.!?;,])', text)
+        
+        # Reconstruct sentences with punctuation
+        result = []
+        for i in range(0, len(sentences)-1, 2):
+            sentence = sentences[i].strip()
+            punct = sentences[i+1] if i+1 < len(sentences) else ''
+            
+            if sentence:
+                result.append(sentence + punct)
+        
+        # Handle last part if no punctuation
+        if len(sentences) % 2 == 1 and sentences[-1].strip():
+            result.append(sentences[-1].strip())
+        
+        return [s.strip() for s in result if s.strip()]
+    
     def _speak_with_gtts(self, text, lang='vi'):
         """
         Speak text using Google TTS (gTTS).
@@ -197,6 +251,7 @@ class TTSEngine:
         """
         Convert text to speech and play it.
         Automatically detects language and uses appropriate TTS engine.
+        Splits text by punctuation for natural pauses.
         
         Args:
             text (str): Text to speak
@@ -212,18 +267,31 @@ class TTSEngine:
         else:
             detected_lang = lang if lang else 'en'
         
+        # Split text into sentences for natural pauses
+        sentences = self._split_text_by_punctuation(text)
+        
         # Decide which engine to use
         use_gtts = (detected_lang == 'vi' and self.use_gtts_for_vietnamese)
         
         if blocking:
-            # Blocking mode: wait for speech to complete
+            # Blocking mode: speak sentence by sentence with pauses
             self.is_speaking = True
             try:
-                if use_gtts:
-                    self._speak_with_gtts(text, lang=detected_lang)
-                else:
-                    self.engine.say(text)
-                    self.engine.runAndWait()
+                for i, sentence in enumerate(sentences):
+                    if not sentence.strip():
+                        continue
+                    
+                    if use_gtts:
+                        self._speak_with_gtts(sentence, lang=detected_lang)
+                    else:
+                        self.engine.say(sentence)
+                        self.engine.runAndWait()
+                    
+                    # Add pause between sentences (except last one)
+                    if i < len(sentences) - 1:
+                        import time
+                        time.sleep(0.3)  # 300ms pause between sentences
+                        
             except Exception as e:
                 print(f"TTS Error: {e}")
             finally:
@@ -236,6 +304,7 @@ class TTSEngine:
         """
         Speak text asynchronously in a separate thread.
         Automatically detects language and uses appropriate TTS engine.
+        Splits text by punctuation for natural pauses.
         
         Args:
             text (str): Text to speak
@@ -250,17 +319,30 @@ class TTSEngine:
         else:
             detected_lang = lang if lang else 'en'
         
+        # Split text into sentences for natural pauses
+        sentences = self._split_text_by_punctuation(text)
+        
         # Decide which engine to use
         use_gtts = (detected_lang == 'vi' and self.use_gtts_for_vietnamese)
         
         def _speak():
             self.is_speaking = True
             try:
-                if use_gtts:
-                    self._speak_with_gtts(text, lang=detected_lang)
-                else:
-                    self.engine.say(text)
-                    self.engine.runAndWait()
+                import time
+                for i, sentence in enumerate(sentences):
+                    if not sentence.strip():
+                        continue
+                    
+                    if use_gtts:
+                        self._speak_with_gtts(sentence, lang=detected_lang)
+                    else:
+                        self.engine.say(sentence)
+                        self.engine.runAndWait()
+                    
+                    # Add pause between sentences (except last one)
+                    if i < len(sentences) - 1:
+                        time.sleep(0.3)  # 300ms pause
+                        
             except Exception as e:
                 print(f"TTS Error: {e}")
             finally:

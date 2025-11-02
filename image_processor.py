@@ -151,17 +151,29 @@ class ImageProcessor:
             numpy.ndarray: Contrast-enhanced image
         """
         if strength == 'strong':
-            # Stronger enhancement for very dark images
-            clahe = cv2.createCLAHE(clipLimit=3.5, tileGridSize=(8, 8))
+            # For very dark images, use aggressive enhancement
+            
+            # Step 1: Apply strong CLAHE
+            clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
             enhanced = clahe.apply(image)
             
-            # Additional brightness adjustment for dark images
+            # Step 2: Boost brightness significantly
             mean_brightness = np.mean(enhanced)
-            if mean_brightness < 100:
-                # Boost brightness
-                alpha = 1.3  # Contrast
-                beta = 30   # Brightness
+            
+            if mean_brightness < 120:
+                # Very dark - aggressive brightness boost
+                alpha = 1.5  # Contrast multiplier
+                beta = 50    # Brightness offset
                 enhanced = cv2.convertScaleAbs(enhanced, alpha=alpha, beta=beta)
+            elif mean_brightness < 150:
+                # Dark - moderate boost
+                alpha = 1.3
+                beta = 30
+                enhanced = cv2.convertScaleAbs(enhanced, alpha=alpha, beta=beta)
+            
+            # Step 3: Apply histogram equalization for uniform distribution
+            enhanced = cv2.equalizeHist(enhanced)
+            
         else:
             # Normal CLAHE
             clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
@@ -351,7 +363,7 @@ class ImageProcessor:
         
         # Step 4: Detect if image is dark
         mean_brightness = np.mean(gray)
-        is_dark = mean_brightness < 90
+        is_dark = mean_brightness < 110  # Increased threshold to catch more dark images
         
         # Step 5: Upscale if image is too small (IMPORTANT for OCR accuracy)
         upscaled = self.upscale_image(gray, target_dpi=300)
